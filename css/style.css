@@ -558,6 +558,18 @@ body[data-current-view="player"] .content-row.is-row-far {
     color: #090a11;
 }
 
+#homeLoginButton:focus,
+#homeLoginButton:hover {
+    background: #fff;
+    border-color: rgba(255, 255, 255, 0.94);
+    color: #05060a;
+    box-shadow:
+        0 0 0 4px rgba(255, 255, 255, 0.98),
+        0 0 0 11px rgba(92, 139, 255, 0.36),
+        inset 0 0 0 2px rgba(8, 10, 18, 0.34),
+        0 22px 36px rgba(0, 0, 0, 0.42);
+}
+
 .browse-shelf {
     padding: 26px 26px 28px;
     background:
