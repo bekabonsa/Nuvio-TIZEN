@@ -641,12 +641,28 @@ function scrollElementIntoView(el) {
         parent.id === 'playerActions' ||
         parent.id === 'searchScopeGroup'
     )) {
-        var left = el.offsetLeft - 18;
-        var right = el.offsetLeft + el.offsetWidth + 18;
+        var isRelatedRow = parent.classList.contains('detail-related-row');
+        var margin = isRelatedRow
+            ? Math.min(150, Math.max(72, Math.floor(parent.clientWidth * 0.1)))
+            : 18;
+        var left = el.offsetLeft - margin;
+        var right = el.offsetLeft + el.offsetWidth + margin;
+        var maxScroll = isRelatedRow
+            ? Math.max(0, parent.scrollWidth - parent.clientWidth)
+            : 0;
+        var targetScroll;
+
         if (left < parent.scrollLeft) {
-            parent.scrollLeft = left;
+            targetScroll = left;
         } else if (right > parent.scrollLeft + parent.clientWidth) {
-            parent.scrollLeft = right - parent.clientWidth;
+            targetScroll = right - parent.clientWidth;
+        }
+
+        if (typeof targetScroll === 'number') {
+            if (isRelatedRow) {
+                targetScroll = Math.max(0, Math.min(maxScroll, targetScroll));
+            }
+            parent.scrollLeft = targetScroll;
         }
     }
 }
@@ -713,6 +729,22 @@ function scrollRowContainerIntoView(container) {
 
     if (!activeView || !container) {
         return;
+    }
+
+    if (state.currentView === 'addons') {
+        if (container.id === 'detailHeroRow') {
+            if (activeView.scrollTop !== 0) {
+                activeView.scrollTop = 0;
+            }
+            return;
+        }
+        if (container.id === 'detailRelatedSection') {
+            var relatedTarget = Math.max(0, container.offsetTop - 22);
+            if (Math.abs(activeView.scrollTop - relatedTarget) > 4) {
+                activeView.scrollTop = relatedTarget;
+            }
+            return;
+        }
     }
 
     if (state.mainRow === 0) {

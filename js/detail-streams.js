@@ -1916,9 +1916,23 @@ function applySelectedImdbApiTitleToSelection() {
 }
 
 function getCastImageUrl(credit) {
-    return credit && credit.name && credit.name.primaryImage && credit.name.primaryImage.url
-        ? credit.name.primaryImage.url
-        : '';
+    return getSmallRemoteImageUrl(credit && credit.name && credit.name.primaryImage && credit.name.primaryImage.url);
+}
+
+function getSmallRemoteImageUrl(url) {
+    var value = String(url || '');
+
+    if (!value) {
+        return '';
+    }
+    if (/m\.media-amazon\.com\/images\//i.test(value)) {
+        return value.replace(/(\._V1)(?:_[^.]*)?(\.[a-z0-9]+)(\?.*)?$/i, '$1_SX160$2$3');
+    }
+    if (/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\//i.test(value)) {
+        return value.replace(/\/(?:original|w\d+)\//i, '/w185/');
+    }
+
+    return value;
 }
 
 function getCastInitials(name) {
@@ -1973,7 +1987,7 @@ function normalizeImdbApiTitleStars(title) {
         return {
             id: star.id || star.displayName,
             name: star.displayName || '',
-            image: star.primaryImage && star.primaryImage.url ? star.primaryImage.url : '',
+            image: getSmallRemoteImageUrl(star.primaryImage && star.primaryImage.url),
             role: ''
         };
     }).filter(function(member) {
@@ -1981,24 +1995,43 @@ function normalizeImdbApiTitleStars(title) {
     });
 }
 
+function getCastRenderKey(cast) {
+    return (cast || []).map(function(member) {
+        return [
+            member && member.id || '',
+            member && member.name || '',
+            member && member.image || '',
+            member && member.role || ''
+        ].join('~');
+    }).join('|');
+}
+
 function renderDetailCast() {
     var section = byId('detailCastSection');
     var row = byId('detailCastRow');
+    var renderKey;
     var fragment;
 
     if (!section || !row) {
         return;
     }
 
-    row.innerHTML = '';
     if (!state.selectedItem || !state.selectedCast || !state.selectedCast.length) {
+        row.innerHTML = '';
+        row.setAttribute('data-cast-render-key', '');
         section.hidden = true;
         return;
     }
 
     section.hidden = false;
+    renderKey = getCastRenderKey(state.selectedCast);
+    if (row.getAttribute('data-cast-render-key') === renderKey && row.children.length === state.selectedCast.length) {
+        return;
+    }
+
+    row.innerHTML = '';
     fragment = document.createDocumentFragment();
-    state.selectedCast.forEach(function(member) {
+    state.selectedCast.forEach(function(member, index) {
         var wrapper = document.createElement('div');
         var avatar = document.createElement('div');
         var name = document.createElement('div');
@@ -2010,8 +2043,8 @@ function renderDetailCast() {
         if (member.image) {
             image = document.createElement('img');
             image.decoding = 'async';
-            image.loading = 'lazy';
-            image.setAttribute('fetchpriority', 'low');
+            image.loading = 'eager';
+            image.setAttribute('fetchpriority', index < 6 ? 'high' : 'auto');
             image.alt = member.name;
             image.src = member.image;
             image.onerror = function() {
@@ -2036,6 +2069,7 @@ function renderDetailCast() {
         fragment.appendChild(wrapper);
     });
     row.appendChild(fragment);
+    row.setAttribute('data-cast-render-key', renderKey);
 }
 
 function getDetailRelatedKey(type, id) {
@@ -2144,16 +2178,24 @@ function normalizeRelatedItems(payload, type) {
     });
 }
 
+function getRelatedRenderKey(kind, items) {
+    return normalizeAddonType(kind) + ':' + (items || []).map(function(item) {
+        return item && item.id ? String(item.id) : '';
+    }).join('|');
+}
+
 function requestDetailRelated(type, id) {
+    var options = arguments[2] || {};
     var baseUrl = getImdbCatalogApiBaseUrl();
     var normalizedType = normalizeAddonType(type);
     var key = getDetailRelatedKey(normalizedType, id);
     var limit = Math.max(1, Number(DETAIL_RELATED_LIMIT || 12) || 12);
+    var force = !!options.force;
 
     if (!id) {
         return Promise.resolve([]);
     }
-    if (Object.prototype.hasOwnProperty.call(detailRelatedCache, key)) {
+    if (!force && Object.prototype.hasOwnProperty.call(detailRelatedCache, key)) {
         return Promise.resolve(detailRelatedCache[key]);
     }
     if (detailRelatedPending[key]) {
@@ -2172,13 +2214,19 @@ function requestDetailRelated(type, id) {
             'GET'
         );
     }).then(function(payload) {
-        return normalizeRelatedItems(payload, normalizedType);
+        var remoteItems = normalizeRelatedItems(payload, normalizedType);
+        return remoteItems.length ? remoteItems : getLocalRelatedCandidates(normalizedType, id, limit);
     }).catch(function() {
         return getLocalRelatedCandidates(normalizedType, id, limit);
     }) : Promise.resolve(getLocalRelatedCandidates(normalizedType, id, limit))).then(function(items) {
-        detailRelatedCache[key] = items || [];
+        items = items || [];
+        if (items.length) {
+            detailRelatedCache[key] = items;
+        } else {
+            delete detailRelatedCache[key];
+        }
         delete detailRelatedPending[key];
-        return detailRelatedCache[key];
+        return items;
     }).catch(function(error) {
         delete detailRelatedPending[key];
         throw error;
@@ -2214,14 +2262,16 @@ function renderDetailRelated() {
     var count = byId('detailRelatedCount');
     var kind = normalizeAddonType(state.selectedType);
     var items = state.selectedRelatedItems || [];
+    var renderKey;
     var fragment;
 
     if (!section || !row) {
         return;
     }
 
-    row.innerHTML = '';
     if (!state.selectedItem || state.detailMode !== 'details' || !items.length || typeof createCard !== 'function') {
+        row.innerHTML = '';
+        row.setAttribute('data-related-render-key', '');
         section.hidden = true;
         markFocusRegistryDirty();
         return;
@@ -2238,6 +2288,12 @@ function renderDetailRelated() {
         count.textContent = items.length + ' pick' + (items.length === 1 ? '' : 's');
     }
 
+    renderKey = getRelatedRenderKey(kind, items);
+    if (row.getAttribute('data-related-render-key') === renderKey && row.children.length === items.length) {
+        return;
+    }
+
+    row.innerHTML = '';
     fragment = document.createDocumentFragment();
     items.forEach(function(item) {
         fragment.appendChild(createCard(item, item.__kind || kind, {
@@ -2250,17 +2306,19 @@ function renderDetailRelated() {
         }));
     });
     row.appendChild(fragment);
+    row.setAttribute('data-related-render-key', renderKey);
     markFocusRegistryDirty();
 }
 
 function loadRelatedForSelection(type, id) {
+    var options = arguments[2] || {};
     var requestKey = getDetailRelatedKey(type, id);
 
     state.detailRelatedRequestKey = requestKey;
     state.detailRelatedLoading = true;
     renderDetailRelated();
 
-    return requestDetailRelated(type, id).then(function(items) {
+    return requestDetailRelated(type, id, options).then(function(items) {
         if (state.detailRelatedRequestKey !== requestKey) {
             return;
         }
@@ -2291,6 +2349,11 @@ function loadImdbApiSelectionDetails(type, id) {
         }
         applySelectedImdbApiTitleToSelection();
         renderAddons();
+        if (!state.selectedRelatedItems.length && !state.detailRelatedLoading) {
+            loadRelatedForSelection(type, id, {
+                force: true
+            });
+        }
     }).catch(function() {});
 
     return requestImdbApiCredits(id).then(function(credits) {
@@ -2909,9 +2972,19 @@ function prepareSelection(item, type, options) {
         if (state.selectedDetailRequestKey !== detailRequestKey) {
             return;
         }
-        loadImdbApiSelectionDetails(type, item && item.id);
-        loadTrailerForSelection(type, item && item.id);
         loadRelatedForSelection(type, item && item.id);
+        setTimeout(function() {
+            if (state.selectedDetailRequestKey !== detailRequestKey) {
+                return;
+            }
+            loadTrailerForSelection(type, item && item.id);
+        }, 40);
+        setTimeout(function() {
+            if (state.selectedDetailRequestKey !== detailRequestKey) {
+                return;
+            }
+            loadImdbApiSelectionDetails(type, item && item.id);
+        }, 90);
     }
 
     captureBrowseReturnState();

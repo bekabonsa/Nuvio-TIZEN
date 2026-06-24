@@ -1006,6 +1006,17 @@ async function getImdbApiTitles(entries) {
   return output;
 }
 
+async function getImdbApiTitleById(id) {
+  const key = String(id || '');
+
+  if (!key) {
+    return null;
+  }
+
+  const titles = await getImdbApiTitles([{ id: key }]);
+  return Object.prototype.hasOwnProperty.call(titles, key) ? titles[key] : null;
+}
+
 async function fetchCinemetaArtwork(type, id) {
   const payload = await requestJsonUrl(`${cinemetaBaseUrl}/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`);
   const meta = payload && payload.meta ? payload.meta : payload;
@@ -1367,17 +1378,30 @@ function scoreRelatedEntry(source, candidate) {
 
 async function getRelatedCatalog(index, type, id, limit) {
   const normalizedType = normalizeType(type);
-  const source = getIndexEntry(index, normalizedType, id);
+  let source = getIndexEntry(index, normalizedType, id);
   const candidates = [];
   const candidateLimit = Math.max(limit * 3, 30);
   const items = [];
 
   if (!source) {
-    return {
-      metas: [],
-      hasMore: false,
-      source: 'related-index'
-    };
+    const apiTitle = await getImdbApiTitleById(id);
+
+    if (apiTitle && !titleHasExcludedCountry(apiTitle)) {
+      source = imdbApiTitleToMeta(apiTitle, {
+        id: id,
+        type: normalizedType,
+        name: apiTitle.primaryTitle || apiTitle.originalTitle || id,
+        year: apiTitle.startYear ? String(apiTitle.startYear) : '',
+        genres: []
+      });
+    }
+    if (!source) {
+      return {
+        metas: [],
+        hasMore: false,
+        source: 'related-index-miss'
+      };
+    }
   }
 
   (index[normalizedType] || []).forEach((entry) => {
