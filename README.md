@@ -203,12 +203,39 @@ TMDB_READ_ACCESS_TOKEN='<tmdb-read-access-token>' node scripts/imdb-catalog-api.
 
 Trailer playback uses TMDb videos when TMDb is configured and falls back to Cinemeta trailer metadata when it is not. The app loads trailers through the helper's `/trailer-player` wrapper so Tizen has an HTTP page/referrer for YouTube embeds.
 
+## Oracle Auth and Sync Backend
+
+The Python bridge can also replace the Supabase auth/sync surface used by the TV app. It exposes compatible endpoints for email/password login, token refresh, current user lookup, TV QR login pairing, addon URL reads, watch progress sync, and library sync. Data is stored in SQLite at `NUVIO_AUTH_DB_PATH`, which defaults to `METADATA_ROOT/nuvio-auth.sqlite3`.
+
+Start the bridge with a bootstrap account:
+
+```sh
+BRIDGE_TOKEN='<private-bridge-token>' \
+NUVIO_AUTH_EMAIL='you@example.com' \
+NUVIO_AUTH_PASSWORD='<account-password>' \
+NUVIO_ADDON_URLS='https://v3-cinemeta.strem.io,https://opensubtitles-v3.strem.io' \
+python3 scripts/nuvio-bridge-server.py
+```
+
+Point the TV app at the Oracle bridge in `js/local-config.js` before packaging:
+
+```js
+var NUVIO_AUTH_BASE_URL = 'https://<your-oracle-domain>';
+var TV_LOGIN_REDIRECT_BASE_URL = NUVIO_AUTH_BASE_URL + '/tv-login';
+```
+
+Use HTTPS for the public Oracle host before entering account passwords from the TV or phone. The bridge stores password hashes with PBKDF2 and stores session tokens hashed in SQLite, but HTTP still exposes credentials in transit.
+
+This does not automatically copy old Supabase data. Export/import existing `addons`, watch progress, and library rows separately if you need historical data preserved.
+
+The QR approval page and exchange are served by the Oracle bridge. The TV app still uses its existing external QR image fallback unless the backend is extended to return a local `qr_image_url`.
+
 ## Runtime Notes
 
 - The app is configured as a Tizen TV widget in [`config.xml`](config.xml).
 - Main remote-navigation behavior is implemented in [`js/navigation-focus.js`](js/navigation-focus.js) and wired in [`js/main.js`](js/main.js).
 - Spotlight, browse rails, login, and player UI are styled in [`css/style.css`](css/style.css).
-- The app currently uses Supabase and Nuvio endpoints configured in [`js/config-state.js`](js/config-state.js).
+- Auth and sync use [`NUVIO_AUTH_BASE_URL`](js/config-state.js), which defaults to the old Supabase project and can be overridden in `js/local-config.js`.
 
 ## Current Output
 

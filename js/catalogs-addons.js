@@ -197,6 +197,14 @@ function buildSupabaseHeaders(token) {
     };
 }
 
+function getNuvioAuthBaseUrl() {
+    var baseUrl = typeof NUVIO_AUTH_BASE_URL !== 'undefined' && NUVIO_AUTH_BASE_URL
+        ? NUVIO_AUTH_BASE_URL
+        : SUPABASE_URL;
+
+    return String(baseUrl || '').replace(/\/+$/, '');
+}
+
 function extractAddonUrls(rows) {
     return (rows || []).map(function(row) {
         return row && (row.url || row.base_url) ? row.url || row.base_url : null;
@@ -1973,7 +1981,7 @@ function requestJsonWithHeaders(url, method, body, headers) {
 
 function requestSupabaseAuth(path, method, body) {
     return requestJsonWithHeaders(
-        SUPABASE_URL + path,
+        getNuvioAuthBaseUrl() + path,
         method || 'GET',
         body,
         {
@@ -1984,7 +1992,7 @@ function requestSupabaseAuth(path, method, body) {
 
 function requestSupabaseWithToken(path, method, body, token) {
     return requestJsonWithHeaders(
-        SUPABASE_URL + path,
+        getNuvioAuthBaseUrl() + path,
         method || 'GET',
         body,
         buildSupabaseHeaders(token)
@@ -1996,7 +2004,7 @@ function requestSupabaseWithTokenHeaders(path, method, body, token, extraHeaders
 
     mergeHeaderMap(headers, extraHeaders);
     return requestJsonWithHeaders(
-        SUPABASE_URL + path,
+        getNuvioAuthBaseUrl() + path,
         method || 'GET',
         body,
         headers

@@ -2117,12 +2117,12 @@ function ensureQrAnonymousSession() {
         return Promise.resolve(state.qrAuthAccessToken);
     }
 
-    return requestJsonWithHeaders(SUPABASE_URL + '/auth/v1/signup', 'POST', {
+    return requestJsonWithHeaders(getNuvioAuthBaseUrl() + '/auth/v1/signup', 'POST', {
         data: {
             tv_client: 'nuvio-tv-shell'
         }
     }, baseHeaders).catch(function() {
-        return requestJsonWithHeaders(SUPABASE_URL + '/auth/v1/token?grant_type=anonymous', 'POST', {}, baseHeaders);
+        return requestJsonWithHeaders(getNuvioAuthBaseUrl() + '/auth/v1/token?grant_type=anonymous', 'POST', {}, baseHeaders);
     }).then(function(payload) {
         var tokens = extractQrSessionTokens(payload);
 
@@ -2147,7 +2147,7 @@ function startQrRpc(deviceNonce, includeDeviceName) {
     }
 
     return requestJsonWithHeaders(
-        SUPABASE_URL + '/rest/v1/rpc/start_tv_login_session',
+        getNuvioAuthBaseUrl() + '/rest/v1/rpc/start_tv_login_session',
         'POST',
         body,
         getQrAuthHeaders()
@@ -2255,7 +2255,7 @@ function stopQrLoginSession(resetUi) {
 
 function exchangeQrLoginSession(sessionId) {
     return requestJsonWithHeaders(
-        SUPABASE_URL + '/functions/v1/tv-logins-exchange',
+        getNuvioAuthBaseUrl() + '/functions/v1/tv-logins-exchange',
         'POST',
         {
             code: state.qrCode,
@@ -2294,7 +2294,7 @@ function exchangeQrLoginSession(sessionId) {
 
 function pollQrLoginSession(sessionId) {
     return requestJsonWithHeaders(
-        SUPABASE_URL + '/rest/v1/rpc/poll_tv_login_session',
+        getNuvioAuthBaseUrl() + '/rest/v1/rpc/poll_tv_login_session',
         'POST',
         {
             p_code: state.qrCode,
