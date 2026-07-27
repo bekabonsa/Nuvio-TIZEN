@@ -657,6 +657,29 @@ body[data-current-view="player"] .content-row.is-row-far {
     font-weight: 600;
 }
 
+.stream-header-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.stream-source-toggle .library-toggle-button {
+    min-width: 104px;
+}
+
+.stream-empty-state {
+    margin: 10px 0 0;
+    padding: 18px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 700;
+}
+
 .rail,
 .genre-chip-row {
     display: flex;

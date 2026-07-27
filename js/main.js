@@ -39,11 +39,7 @@ function bindHomeActions() {
 
 function bindDetailActions() {
     byId('detailPlayButton').addEventListener('click', function() {
-        var playable = state.streams.filter(function(entry) {
-            return entry.playable && entry.raw && entry.raw.url;
-        })[0] || state.streams.filter(function(entry) {
-            return entry.bridgeable;
-        })[0];
+        var playable = getPreferredVisibleStream();
 
         if (playable) {
             openPlayableOrBridgeStream(playable);
@@ -154,7 +150,33 @@ function bindLibrary() {
     });
 }
 
+function bindStreamFilters() {
+    byId('streamCachedToggle').addEventListener('click', function() {
+        setStreamSourceFilter('cached');
+    });
+
+    byId('streamBridgeToggle').addEventListener('click', function() {
+        setStreamSourceFilter('bridge');
+    });
+}
+
+function prefillDefaultLoginCredentials() {
+    var emailInput = byId('emailInput');
+    var passwordInput = byId('passwordInput');
+    var defaultEmail = typeof NUVIO_DEFAULT_LOGIN_EMAIL !== 'undefined' ? NUVIO_DEFAULT_LOGIN_EMAIL : '';
+    var defaultPassword = typeof NUVIO_DEFAULT_LOGIN_PASSWORD !== 'undefined' ? NUVIO_DEFAULT_LOGIN_PASSWORD : '';
+
+    if (emailInput && defaultEmail && !emailInput.value) {
+        emailInput.value = defaultEmail;
+    }
+    if (passwordInput && defaultPassword && !passwordInput.value) {
+        passwordInput.value = defaultPassword;
+    }
+}
+
 function bindLogin() {
+    prefillDefaultLoginCredentials();
+
     byId('loginForm').addEventListener('submit', function(event) {
         var email = byId('emailInput').value.trim();
         var password = byId('passwordInput').value;
@@ -595,6 +617,7 @@ function init() {
     bindSearch();
     bindBrowse();
     bindLibrary();
+    bindStreamFilters();
     bindLogin();
     bindPlayer();
 

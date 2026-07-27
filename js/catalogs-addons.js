@@ -135,6 +135,20 @@ function buildBuiltinAddonManifest(baseUrl) {
         };
     }
 
+    if (cleanBaseUrl.indexOf('https://torrentio.strem.fun') === 0) {
+        return {
+            id: 'com.stremio.torrentio.addon',
+            name: 'Torrentio',
+            version: 'fallback',
+            description: 'Fallback Torrentio manifest',
+            resources: [
+                { name: 'stream', types: ['movie', 'series'] }
+            ],
+            types: ['movie', 'series'],
+            catalogs: []
+        };
+    }
+
     return null;
 }
 

@@ -330,6 +330,90 @@ function isTorrentBridgeCandidate(stream) {
     return !!(getTorrentBridgeBaseUrl() && getTorrentBridgeToken() && getStreamInfoHash(stream));
 }
 
+function isBridgeStreamEntry(streamEntry) {
+    var raw = streamEntry && streamEntry.raw ? streamEntry.raw : {};
+    var bridgeBase = getTorrentBridgeBaseUrl();
+    var rawUrl = raw && raw.url ? String(raw.url) : '';
+
+    return !!(streamEntry && (
+        streamEntry.bridgeable
+        || streamEntry.bridgeJob
+        || (bridgeBase && rawUrl.indexOf(bridgeBase + '/stream/') === 0)
+    ));
+}
+
+function isCachedStreamEntry(streamEntry) {
+    return !!(streamEntry
+        && streamEntry.playable
+        && streamEntry.raw
+        && streamEntry.raw.url
+        && !isBridgeStreamEntry(streamEntry));
+}
+
+function getVisibleStreams() {
+    var showCached = state.streamFilterCached !== false;
+    var showBridge = !!state.streamFilterBridge;
+    var hasClassifiedStreams = state.streams.some(function(entry) {
+        return isCachedStreamEntry(entry) || isBridgeStreamEntry(entry);
+    });
+
+    return state.streams.filter(function(entry) {
+        if (showCached && isCachedStreamEntry(entry)) {
+            return true;
+        }
+        if (showBridge && isBridgeStreamEntry(entry)) {
+            return true;
+        }
+
+        return !hasClassifiedStreams && !isCachedStreamEntry(entry) && !isBridgeStreamEntry(entry);
+    });
+}
+
+function getPreferredVisibleStream() {
+    var visibleStreams = getVisibleStreams();
+
+    return visibleStreams.filter(function(entry) {
+        return isCachedStreamEntry(entry);
+    })[0] || visibleStreams.filter(function(entry) {
+        return isBridgeStreamEntry(entry);
+    })[0] || null;
+}
+
+function updateStreamFilterToggleUi() {
+    var cachedButton = byId('streamCachedToggle');
+    var bridgeButton = byId('streamBridgeToggle');
+    var cachedEnabled = state.streamFilterCached !== false;
+    var bridgeEnabled = !!state.streamFilterBridge;
+
+    if (cachedButton) {
+        cachedButton.classList.toggle('is-selected', cachedEnabled);
+        cachedButton.setAttribute('aria-pressed', cachedEnabled ? 'true' : 'false');
+    }
+    if (bridgeButton) {
+        bridgeButton.classList.toggle('is-selected', bridgeEnabled);
+        bridgeButton.setAttribute('aria-pressed', bridgeEnabled ? 'true' : 'false');
+    }
+}
+
+function setStreamSourceFilter(kind) {
+    if (kind === 'bridge') {
+        state.streamFilterBridge = !state.streamFilterBridge;
+    } else {
+        state.streamFilterCached = state.streamFilterCached === false;
+    }
+
+    if (state.streamFilterCached === false && !state.streamFilterBridge) {
+        if (kind === 'bridge') {
+            state.streamFilterBridge = true;
+        } else {
+            state.streamFilterCached = true;
+        }
+    }
+
+    renderStreamList();
+    focusCurrent();
+}
+
 function getTorrentBridgeJobKey(streamEntry) {
     var hash = getStreamInfoHash(streamEntry);
     var fileIdx = streamEntry && streamEntry.raw && typeof streamEntry.raw.fileIdx !== 'undefined'
@@ -568,8 +652,14 @@ function getVisibleDetailActionRowCount() {
     }) ? 1 : 0;
 }
 
+function getVisibleStreamFilterRowCount() {
+    return queryAll('#streamSourceToggle .library-toggle-button').some(function(button) {
+        return isVisibleControl(button);
+    }) ? 1 : 0;
+}
+
 function getFirstStreamMainRow() {
-    return getVisibleDetailActionRowCount() + getEpisodeBrowserRowCount();
+    return getVisibleDetailActionRowCount() + getEpisodeBrowserRowCount() + getVisibleStreamFilterRowCount();
 }
 
 function getSelectedEpisodeMainRow() {
@@ -925,10 +1015,15 @@ function renderSeasonRail() {
 function renderStreamList() {
     var list = byId('streamList');
     var streamCount = byId('streamCount');
+    var visibleStreams = getVisibleStreams();
     var fragment = document.createDocumentFragment();
+    var empty;
 
+    updateStreamFilterToggleUi();
     if (streamCount) {
-        streamCount.textContent = String(state.streams.length);
+        streamCount.textContent = visibleStreams.length === state.streams.length
+            ? visibleStreams.length + ' shown'
+            : visibleStreams.length + ' of ' + state.streams.length + ' shown';
     }
     list.innerHTML = '';
 
@@ -938,7 +1033,17 @@ function renderStreamList() {
         return;
     }
 
-    state.streams.forEach(function(streamEntry) {
+    if (!visibleStreams.length) {
+        empty = document.createElement('p');
+        empty.className = 'stream-empty-state';
+        empty.textContent = 'No streams match the selected filters.';
+        list.appendChild(empty);
+        applyDetailMode();
+        markFocusRegistryDirty();
+        return;
+    }
+
+    visibleStreams.forEach(function(streamEntry) {
         var button = document.createElement('button');
         var main = document.createElement('div');
         var body = document.createElement('div');
@@ -3173,15 +3278,17 @@ function loadStreamsForSelection(options) {
         renderStreamList();
 
         if (state.streams.length) {
-            setAddonsMessage('Loaded ' + state.streams.length + ' stream entries.', 'success');
+            var visibleStreams = getVisibleStreams();
+            setAddonsMessage(
+                visibleStreams.length === state.streams.length
+                    ? 'Loaded ' + state.streams.length + ' stream entries.'
+                    : 'Loaded ' + visibleStreams.length + ' of ' + state.streams.length + ' stream entries.',
+                'success'
+            );
             if (state.autoplayPending) {
                 var resumeStream = getPendingResumeStreamCandidate();
                 state.autoplayPending = false;
-                var playable = resumeStream || state.streams.filter(function(entry) {
-                    return entry.playable && entry.raw && entry.raw.url;
-                })[0] || state.streams.filter(function(entry) {
-                    return entry.bridgeable;
-                })[0];
+                var playable = resumeStream || getPreferredVisibleStream();
                 if (playable) {
                     state.pendingResumeStream = null;
                     openPlayableOrBridgeStream(playable);
@@ -3195,7 +3302,7 @@ function loadStreamsForSelection(options) {
             }
             if (shouldFocusStreams) {
                 state.focusRegion = 'main';
-                state.mainRow = getFirstStreamMainRow();
+                state.mainRow = visibleStreams.length ? getFirstStreamMainRow() : Math.max(0, getFirstStreamMainRow() - 1);
                 state.mainCol = 0;
             }
             setTimeout(focusCurrent, 0);

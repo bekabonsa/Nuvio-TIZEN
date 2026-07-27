@@ -116,6 +116,9 @@ function buildMainRowContainers() {
         for (episodeRowIndex = 0; episodeRowIndex < episodeBrowserRows; episodeRowIndex += 1) {
             addonContainers.push(byId('episodeSection'));
         }
+        if (queryAll('#streamSourceToggle .library-toggle-button').filter(isVisibleControl).length) {
+            addonContainers.push(byId('streamSection'));
+        }
         queryAll('#streamList .stream-card').filter(isVisibleControl).forEach(function() {
             addonContainers.push(byId('streamSection'));
         });
@@ -308,6 +311,7 @@ function buildMainRows() {
         var relatedCards = queryAll('#detailRelatedRow .card').filter(isVisibleControl);
         var seasons = queryAll('#seasonRail .season-chip').filter(isVisibleControl);
         var episodes = queryAll('#episodeRail .episode-card').filter(isVisibleControl);
+        var streamFilters = queryAll('#streamSourceToggle .library-toggle-button').filter(isVisibleControl);
         var streams = queryAll('#streamList .stream-card').filter(isVisibleControl);
         var browserRowCount = Math.max(seasons.length, episodes.length);
         var browserRowIndex;
@@ -330,6 +334,10 @@ function buildMainRows() {
             if (browserRow.length) {
                 addonRows.push(browserRow);
             }
+        }
+
+        if (streamFilters.length) {
+            addonRows.push(streamFilters);
         }
 
         streams.forEach(function(streamButton) {

@@ -4,6 +4,8 @@ var DEFAULT_ADDON_URLS = [CINEMETA_BASE, OPENSUBTITLES_BASE];
 var NUVIO_API_BASE = 'https://nuvio.tv';
 var SUPABASE_URL = 'https://dpyhjjcoabcglfmgecug.supabase.co';
 var NUVIO_AUTH_BASE_URL = SUPABASE_URL;
+var NUVIO_DEFAULT_LOGIN_EMAIL = '';
+var NUVIO_DEFAULT_LOGIN_PASSWORD = '';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRweWhqamNvYWJjZ2xmbWdlY3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3ODYyNDcsImV4cCI6MjA4NjM2MjI0N30.U-3QSNDdpsnvRk_7ZL419AFTOtggHJJcmkodxeXjbkg';
 var TV_LOGIN_REDIRECT_BASE_URL = 'https://nuvioapp.space/tv-login';
 var AUDIO_TRANSCODER_BASE_URL = 'http://10.0.0.10:8787';
@@ -292,6 +294,8 @@ var state = {
     selectedVideo: null,
     detailMode: 'details',
     streams: [],
+    streamFilterCached: true,
+    streamFilterBridge: false,
     currentStream: null,
     torrentBridgeJobs: {},
     audioTracks: [],
