@@ -294,6 +294,7 @@ var state = {
     selectedVideo: null,
     detailMode: 'details',
     streams: [],
+    streamSourceMode: 'cached',
     streamFilterCached: true,
     streamFilterBridge: false,
     currentStream: null,

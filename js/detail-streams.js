@@ -350,22 +350,42 @@ function isCachedStreamEntry(streamEntry) {
         && !isBridgeStreamEntry(streamEntry));
 }
 
+function getStreamSourceMode() {
+    if (state.streamSourceMode === 'bridge') {
+        return 'bridge';
+    }
+    if (state.streamSourceMode === 'cached') {
+        return 'cached';
+    }
+    if (state.streamFilterBridge && state.streamFilterCached === false) {
+        return 'bridge';
+    }
+    return 'cached';
+}
+
+function syncStreamSourceFilterState(mode) {
+    var normalizedMode = mode === 'bridge' ? 'bridge' : 'cached';
+
+    state.streamSourceMode = normalizedMode;
+    state.streamFilterCached = normalizedMode === 'cached';
+    state.streamFilterBridge = normalizedMode === 'bridge';
+    return normalizedMode;
+}
+
 function getVisibleStreams() {
-    var showCached = state.streamFilterCached !== false;
-    var showBridge = !!state.streamFilterBridge;
+    var sourceMode = syncStreamSourceFilterState(getStreamSourceMode());
     var hasClassifiedStreams = state.streams.some(function(entry) {
         return isCachedStreamEntry(entry) || isBridgeStreamEntry(entry);
     });
 
     return state.streams.filter(function(entry) {
-        if (showCached && isCachedStreamEntry(entry)) {
-            return true;
-        }
-        if (showBridge && isBridgeStreamEntry(entry)) {
-            return true;
+        if (sourceMode === 'bridge') {
+            return isBridgeStreamEntry(entry)
+                || (!hasClassifiedStreams && !isCachedStreamEntry(entry) && !isBridgeStreamEntry(entry));
         }
 
-        return !hasClassifiedStreams && !isCachedStreamEntry(entry) && !isBridgeStreamEntry(entry);
+        return isCachedStreamEntry(entry)
+            || (!hasClassifiedStreams && !isCachedStreamEntry(entry) && !isBridgeStreamEntry(entry));
     });
 }
 
@@ -382,8 +402,9 @@ function getPreferredVisibleStream() {
 function updateStreamFilterToggleUi() {
     var cachedButton = byId('streamCachedToggle');
     var bridgeButton = byId('streamBridgeToggle');
-    var cachedEnabled = state.streamFilterCached !== false;
-    var bridgeEnabled = !!state.streamFilterBridge;
+    var sourceMode = syncStreamSourceFilterState(getStreamSourceMode());
+    var cachedEnabled = sourceMode === 'cached';
+    var bridgeEnabled = sourceMode === 'bridge';
 
     if (cachedButton) {
         cachedButton.classList.toggle('is-selected', cachedEnabled);
@@ -396,20 +417,7 @@ function updateStreamFilterToggleUi() {
 }
 
 function setStreamSourceFilter(kind) {
-    if (kind === 'bridge') {
-        state.streamFilterBridge = !state.streamFilterBridge;
-    } else {
-        state.streamFilterCached = state.streamFilterCached === false;
-    }
-
-    if (state.streamFilterCached === false && !state.streamFilterBridge) {
-        if (kind === 'bridge') {
-            state.streamFilterBridge = true;
-        } else {
-            state.streamFilterCached = true;
-        }
-    }
-
+    syncStreamSourceFilterState(kind);
     renderStreamList();
     focusCurrent();
 }

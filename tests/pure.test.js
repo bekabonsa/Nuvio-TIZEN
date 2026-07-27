@@ -380,6 +380,60 @@ function testTorrentBridgeHelpers() {
   }
 }
 
+function testStreamSourceFilterMode() {
+  const previousStreams = sandbox.state.streams;
+  const previousMode = sandbox.state.streamSourceMode;
+  const previousCached = sandbox.state.streamFilterCached;
+  const previousBridge = sandbox.state.streamFilterBridge;
+  const cachedStream = {
+    title: 'Cached stream',
+    playable: true,
+    raw: { url: 'https://cdn.example.test/movie.mp4' }
+  };
+  const bridgeStream = {
+    title: 'Bridge stream',
+    playable: false,
+    bridgeable: true,
+    raw: { infoHash: '0123456789abcdef0123456789abcdef01234567' }
+  };
+
+  try {
+    sandbox.state.streams = [cachedStream, bridgeStream];
+
+    sandbox.syncStreamSourceFilterState('cached');
+    assert.strictEqual(sandbox.state.streamSourceMode, 'cached');
+    assert.strictEqual(sandbox.state.streamFilterCached, true);
+    assert.strictEqual(sandbox.state.streamFilterBridge, false);
+    assert.deepStrictEqual(
+      sandbox.getVisibleStreams().map((stream) => stream.title),
+      ['Cached stream']
+    );
+
+    sandbox.syncStreamSourceFilterState('bridge');
+    assert.strictEqual(sandbox.state.streamSourceMode, 'bridge');
+    assert.strictEqual(sandbox.state.streamFilterCached, false);
+    assert.strictEqual(sandbox.state.streamFilterBridge, true);
+    assert.deepStrictEqual(
+      sandbox.getVisibleStreams().map((stream) => stream.title),
+      ['Bridge stream']
+    );
+
+    sandbox.state.streamSourceMode = null;
+    sandbox.state.streamFilterCached = false;
+    sandbox.state.streamFilterBridge = true;
+    assert.strictEqual(sandbox.getStreamSourceMode(), 'bridge');
+    assert.deepStrictEqual(
+      sandbox.getVisibleStreams().map((stream) => stream.title),
+      ['Bridge stream']
+    );
+  } finally {
+    sandbox.state.streams = previousStreams;
+    sandbox.state.streamSourceMode = previousMode;
+    sandbox.state.streamFilterCached = previousCached;
+    sandbox.state.streamFilterBridge = previousBridge;
+  }
+}
+
 async function testBrowseRequestVersioning() {
   const previousFetchRatingCombinedBrowse = sandbox.fetchRatingCombinedBrowse;
   const previousUpdateConnectionStatus = sandbox.updateConnectionStatus;
@@ -823,6 +877,7 @@ function testResumeAndTranscodedTimelineHelpers() {
     testBlockbusterCatalogOption,
     testDetailTrailerHelpers,
     testTorrentBridgeHelpers,
+    testStreamSourceFilterMode,
     testBrowseRequestVersioning,
     testMetadataFormatting,
     testImdbApiDetailHelpers,
