@@ -2437,13 +2437,38 @@ body.is-player-fullscreen.is-player-chrome-visible .player-control-title {
 }
 
 .player-actions {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-height: 82px;
     margin-top: 14px;
-    padding: 10px 8px 0;
-    flex-wrap: nowrap;
+    padding: 8px 0 0;
+    overflow: visible;
+}
+
+.player-control-cluster {
+    position: absolute;
+    top: 8px;
+    display: flex;
     align-items: center;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    gap: 12px;
+}
+
+.player-control-center {
+    left: 50%;
+    top: 0;
+    width: 236px;
+    margin-left: -118px;
+    justify-content: center;
+}
+
+.player-control-right {
+    right: 0;
+    padding: 5px 6px;
+    gap: 4px;
+    border-radius: 29px;
+    background: rgba(11, 13, 20, 0.68);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .player-icon-button {
@@ -2455,6 +2480,28 @@ body.is-player-fullscreen.is-player-chrome-visible .player-control-title {
     border-radius: 18px;
     position: relative;
     flex: 0 0 auto;
+}
+
+.player-toggle-button {
+    min-width: 76px;
+    width: 76px;
+    height: 76px;
+    min-height: 76px;
+    border-radius: 38px;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.player-control-right .player-icon-button {
+    min-width: 52px;
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+    border-radius: 26px;
+    background: transparent;
+}
+
+.player-control-right .player-action-glyph {
+    font-size: 20px;
 }
 
 .player-action-glyph {

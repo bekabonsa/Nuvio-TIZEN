@@ -399,31 +399,35 @@
                                         </div>
                                         <div class="player-progress-caption" id="playerProgressCaption">Idle</div>
                                         <div class="action-row player-actions" id="playerActions">
-                                            <button class="action-button player-icon-button" id="playerSeekBackButton" type="button" aria-label="Back 30 seconds" title="Back 30 seconds">
-                                                <span class="player-action-glyph">↶</span>
-                                                <span class="player-action-badge">30</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerToggleButton" type="button" aria-label="Play" title="Play">
-                                                <span class="player-action-glyph" id="playerToggleGlyph">▶</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerSeekForwardButton" type="button" aria-label="Forward 30 seconds" title="Forward 30 seconds">
-                                                <span class="player-action-glyph">↷</span>
-                                                <span class="player-action-badge">30</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerAudioButton" type="button" aria-label="Cycle audio track" title="Cycle audio track">
-                                                <span class="player-action-glyph">♫</span>
-                                                <span class="player-action-badge" id="playerAudioBadge">1</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerSubtitleButton" type="button" aria-label="Cycle subtitles" title="Cycle subtitles">
-                                                <span class="player-action-glyph">CC</span>
-                                                <span class="player-action-badge" id="playerSubtitleBadge">Off</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerNextEpisodeButton" type="button" aria-label="No next episode" title="No next episode" disabled>
-                                                <span class="player-action-glyph">⏭</span>
-                                            </button>
-                                            <button class="action-button player-icon-button" id="playerFullscreenButton" type="button" aria-label="Fullscreen" title="Fullscreen">
-                                                <span class="player-action-glyph" id="playerFullscreenGlyph">⛶</span>
-                                            </button>
+                                            <div class="player-control-cluster player-control-center">
+                                                <button class="action-button player-icon-button" id="playerSeekBackButton" type="button" aria-label="Back 30 seconds" title="Back 30 seconds">
+                                                    <span class="player-action-glyph">↶</span>
+                                                    <span class="player-action-badge">30</span>
+                                                </button>
+                                                <button class="action-button player-icon-button player-toggle-button" id="playerToggleButton" type="button" aria-label="Play" title="Play">
+                                                    <span class="player-action-glyph" id="playerToggleGlyph">▶</span>
+                                                </button>
+                                                <button class="action-button player-icon-button" id="playerSeekForwardButton" type="button" aria-label="Forward 30 seconds" title="Forward 30 seconds">
+                                                    <span class="player-action-glyph">↷</span>
+                                                    <span class="player-action-badge">30</span>
+                                                </button>
+                                            </div>
+                                            <div class="player-control-cluster player-control-right">
+                                                <button class="action-button player-icon-button" id="playerAudioButton" type="button" aria-label="Cycle audio track" title="Cycle audio track">
+                                                    <span class="player-action-glyph">♫</span>
+                                                    <span class="player-action-badge" id="playerAudioBadge">1</span>
+                                                </button>
+                                                <button class="action-button player-icon-button" id="playerSubtitleButton" type="button" aria-label="Cycle subtitles" title="Cycle subtitles">
+                                                    <span class="player-action-glyph">CC</span>
+                                                    <span class="player-action-badge" id="playerSubtitleBadge">Off</span>
+                                                </button>
+                                                <button class="action-button player-icon-button" id="playerNextEpisodeButton" type="button" aria-label="No next episode" title="No next episode" disabled>
+                                                    <span class="player-action-glyph">⏭</span>
+                                                </button>
+                                                <button class="action-button player-icon-button" id="playerFullscreenButton" type="button" aria-label="Fullscreen" title="Fullscreen">
+                                                    <span class="player-action-glyph" id="playerFullscreenGlyph">⛶</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
