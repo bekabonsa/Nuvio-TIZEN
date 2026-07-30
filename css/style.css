@@ -1938,6 +1938,40 @@ body[data-current-view="addons"] #detailHeroRow.is-row-far {
     text-shadow: 0 2px 12px rgba(0, 0, 0, 0.86);
 }
 
+.episode-watched-icon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 34px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.48);
+    background: rgba(8, 10, 16, 0.78);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+}
+
+.episode-watched-icon::before {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 18px;
+    height: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    border-radius: 50% / 60%;
+}
+
+.episode-watched-icon::after {
+    content: "";
+    position: absolute;
+    left: 15px;
+    top: 11px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
 .episode-copy {
     flex: 1 1 auto;
     min-width: 0;

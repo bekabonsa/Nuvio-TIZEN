@@ -623,6 +623,7 @@ function init() {
 
     restoreStoredSession();
     restoreContinueWatching();
+    restoreWatchedEpisodes();
     restoreLibraryItems();
     updateUserPanel();
     updateNavState();

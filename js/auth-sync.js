@@ -310,9 +310,13 @@ function fetchContinueWatchingFromNuvio() {
                     entry.stream = localByKey[key];
                 }
             });
+            mergeWatchedEpisodeEntries(entries);
             state.continueWatching = dedupeEntries(entries, normalizeContinueEntry, CONTINUE_WATCHING_LIMIT);
             saveContinueWatching();
             renderContinueWatching();
+            if (typeof renderEpisodeBrowserForMode === 'function') {
+                renderEpisodeBrowserForMode();
+            }
             return true;
         });
     }).catch(function(error) {

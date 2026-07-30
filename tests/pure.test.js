@@ -105,6 +105,43 @@ function testContinueDedupe() {
   assert.strictEqual(entries[1].video.season, 1);
 }
 
+function testWatchedEpisodeTracking() {
+  const show = { id: 'ttshow', name: 'Show' };
+  const first = { id: 'ttshow:1:1', season: 1, episode: 1, title: 'Pilot' };
+  const second = { id: 'ttshow:1:2', season: 1, episode: 2, title: 'Second' };
+
+  sandbox.state.selectedItem = show;
+  sandbox.state.selectedType = 'series';
+  sandbox.state.watchedEpisodes = [];
+  sandbox.state.continueWatching = [];
+
+  sandbox.mergeWatchedEpisodeEntries([{
+    kind: 'series',
+    item: show,
+    video: first,
+    position: 120,
+    duration: 1800
+  }]);
+
+  assert.strictEqual(sandbox.isWatchedEpisode(first), true);
+  assert.strictEqual(sandbox.isWatchedEpisode(second), false);
+
+  sandbox.mergeWatchedEpisodeEntries([{
+    kind: 'series',
+    item: show,
+    video: { season: 1, episode: 2 },
+    lastWatched: Date.now()
+  }]);
+
+  assert.strictEqual(sandbox.isWatchedEpisode(second), true);
+  assert.strictEqual(sandbox.state.watchedEpisodes.length, 2);
+
+  sandbox.state.selectedItem = null;
+  sandbox.state.selectedType = null;
+  sandbox.state.watchedEpisodes = [];
+  sandbox.state.continueWatching = [];
+}
+
 function testCatalogSelectionAndUrls() {
   const cinemetaAddon = {
     transportUrl: 'https://v3-cinemeta.strem.io/manifest.json'
@@ -896,6 +933,7 @@ function testResumeAndTranscodedTimelineHelpers() {
   const tests = [
     testSubtitleParsing,
     testContinueDedupe,
+    testWatchedEpisodeTracking,
     testCatalogSelectionAndUrls,
     testBrowsePaging,
     testBrowseGenreFiltering,

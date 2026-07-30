@@ -897,10 +897,16 @@ function renderEpisodeRail() {
         var description = document.createElement('p');
         var runtime = document.createElement('div');
         var imageUrl = getVideoThumbnail(video);
+        var watched = isWatchedEpisode(video);
+        var watchedIcon;
 
         button.className = 'episode-card';
+        if (watched) {
+            button.classList.add('is-watched');
+        }
         button.type = 'button';
         button.setAttribute('tabindex', '-1');
+        button.setAttribute('aria-label', (watched ? 'Watched. ' : '') + getVideoTitle(video));
 
         thumb.className = 'episode-thumb';
         if (imageUrl) {
@@ -929,6 +935,12 @@ function renderEpisodeRail() {
         thumbLabel.className = 'episode-thumb-label';
         thumbLabel.textContent = formatEpisodeCode(video);
         thumb.appendChild(thumbLabel);
+        if (watched) {
+            watchedIcon = document.createElement('span');
+            watchedIcon.className = 'episode-watched-icon';
+            watchedIcon.setAttribute('aria-hidden', 'true');
+            thumb.appendChild(watchedIcon);
+        }
 
         copy.className = 'episode-copy';
         title.className = 'episode-title';

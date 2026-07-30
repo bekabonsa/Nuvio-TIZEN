@@ -565,6 +565,129 @@ function normalizeContinueEntry(entry) {
     };
 }
 
+function getWatchedEpisodeEntryKey(entry) {
+    var kind = normalizeAddonType(entry && entry.kind);
+    var item = entry && entry.item ? entry.item : null;
+    var video = entry && entry.video ? entry.video : null;
+
+    if (kind !== 'series' || !item || !item.id || !video) {
+        return '';
+    }
+
+    return entry.progressKey
+        || entry.progress_key
+        || (item.id + '_s' + getVideoSeason(video) + 'e' + getVideoEpisode(video));
+}
+
+function normalizeWatchedEpisodeEntry(entry) {
+    var normalized = normalizeContinueEntry(entry);
+
+    if (!normalized || normalizeAddonType(normalized.kind) !== 'series' || !normalized.video) {
+        return null;
+    }
+
+    normalized.progressKey = normalized.progressKey || getWatchedEpisodeEntryKey(normalized);
+    if (!normalized.progressKey) {
+        return null;
+    }
+
+    return normalized;
+}
+
+function watchedEpisodeHasProgress(entry) {
+    return !!(entry
+        && (entry.position > 0
+            || entry.duration > 0
+            || entry.lastWatched
+            || entry.updatedAt));
+}
+
+function dedupeWatchedEpisodeEntries(entries, limit) {
+    var normalized = [];
+    var seen = {};
+
+    (entries || []).forEach(function(entry) {
+        var item = normalizeWatchedEpisodeEntry(entry);
+        var key;
+
+        if (!item || !watchedEpisodeHasProgress(item)) {
+            return;
+        }
+
+        key = getWatchedEpisodeEntryKey(item);
+        if (!key || seen[key]) {
+            return;
+        }
+
+        seen[key] = true;
+        normalized.push(item);
+    });
+
+    return normalized.slice(0, limit);
+}
+
+function saveWatchedEpisodes() {
+    localStorage.setItem(STORAGE_WATCHED_EPISODES, JSON.stringify(state.watchedEpisodes.slice(0, WATCHED_EPISODE_LIMIT)));
+}
+
+function mergeWatchedEpisodeEntries(entries, skipSave) {
+    var merged = dedupeWatchedEpisodeEntries(
+        (entries || []).concat(state.watchedEpisodes || []),
+        WATCHED_EPISODE_LIMIT
+    );
+
+    state.watchedEpisodes = merged;
+    if (!skipSave) {
+        saveWatchedEpisodes();
+    }
+}
+
+function restoreWatchedEpisodes() {
+    var payload = safeJsonParse(localStorage.getItem(STORAGE_WATCHED_EPISODES));
+    var source = Array.isArray(payload) ? payload : [];
+    var restored = dedupeWatchedEpisodeEntries(source.concat(state.continueWatching || []), WATCHED_EPISODE_LIMIT);
+
+    state.watchedEpisodes = restored;
+    if (!Array.isArray(payload) || restored.length !== source.length) {
+        saveWatchedEpisodes();
+    }
+}
+
+function episodeVideosMatch(left, right) {
+    if (!left || !right) {
+        return false;
+    }
+    if (left.id && right.id && left.id === right.id) {
+        return true;
+    }
+    return getVideoSeason(left) === getVideoSeason(right)
+        && getVideoEpisode(left) === getVideoEpisode(right);
+}
+
+function watchedEpisodeMatchesVideo(entry, itemId, video) {
+    var normalized = normalizeWatchedEpisodeEntry(entry);
+
+    if (!normalized || !watchedEpisodeHasProgress(normalized) || !normalized.item || normalized.item.id !== itemId || !normalized.video) {
+        return false;
+    }
+
+    return episodeVideosMatch(normalized.video, video);
+}
+
+function isWatchedEpisode(video) {
+    var itemId = state.selectedItem && state.selectedItem.id;
+    var entries;
+
+    if (state.selectedType !== 'series' || !itemId || !video) {
+        return false;
+    }
+
+    entries = (state.watchedEpisodes || []).concat(state.continueWatching || []);
+    return entries.some(function(entry) {
+        return watchedEpisodeMatchesVideo(entry, itemId, video);
+    });
+}
+
 function normalizeLibraryEntry(entry) {
     var item = entry && entry.item ? cloneContinueItem(entry.item) : null;
     var genres = Array.isArray(entry && entry.genres)
@@ -695,6 +818,7 @@ function trackContinueWatching(item, kind, video) {
         return continueEntryKey(entry) !== key;
     })).slice(0, CONTINUE_WATCHING_LIMIT);
 
+    mergeWatchedEpisodeEntries([snapshot]);
     saveContinueWatching();
     pushContinueWatchingToNuvio(snapshot);
 }

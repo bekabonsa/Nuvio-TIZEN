@@ -18,6 +18,7 @@ var STORAGE_AUTH = 'nuvio.accessToken';
 var STORAGE_REFRESH = 'nuvio.refreshToken';
 var STORAGE_USER = 'nuvio.user';
 var STORAGE_CONTINUE = 'nuviotizen.continueWatching';
+var STORAGE_WATCHED_EPISODES = 'nuviotizen.watchedEpisodes';
 var STORAGE_LIBRARY = 'nuviotizen.library';
 function buildDescendingYearList(startYear, endYear) {
     var years = [];
@@ -45,6 +46,7 @@ var FEATURED_ROTATION_MS = 9000;
 var FEATURED_FADE_MS = 180;
 var HOME_CATALOG_LIMIT = 60;
 var CONTINUE_WATCHING_LIMIT = 20;
+var WATCHED_EPISODE_LIMIT = 500;
 var WATCH_PROGRESS_PULL_LIMIT = 50;
 var NUVIO_PROFILE_ID = 1;
 var LIBRARY_LIMIT = 120;
@@ -215,6 +217,7 @@ var state = {
     ownerId: null,
     addons: [],
     continueWatching: [],
+    watchedEpisodes: [],
     libraryItems: [],
     libraryMode: 'saved',
     downloadedLibraryItems: [],
