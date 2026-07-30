@@ -334,11 +334,14 @@ function isBridgeStreamEntry(streamEntry) {
     var raw = streamEntry && streamEntry.raw ? streamEntry.raw : {};
     var bridgeBase = getTorrentBridgeBaseUrl();
     var rawUrl = raw && raw.url ? String(raw.url) : '';
+    var directUrl = raw && raw.directUrl ? String(raw.directUrl) : '';
 
     return !!(streamEntry && (
         streamEntry.bridgeable
         || streamEntry.bridgeJob
         || (bridgeBase && rawUrl.indexOf(bridgeBase + '/stream/') === 0)
+        || (bridgeBase && rawUrl.indexOf(bridgeBase + '/transcode/') === 0)
+        || (bridgeBase && directUrl.indexOf(bridgeBase + '/stream/') === 0)
     ));
 }
 
@@ -495,17 +498,36 @@ function formatTorrentBridgeProgress(job) {
 }
 
 function updateTorrentBridgeEntry(streamEntry, job) {
+    var playback = job && job.playback && job.playback.url ? job.playback : null;
+    var playbackUrl = job && (job.playbackUrl || playback && playback.url || job.streamUrl);
+
     streamEntry.bridgeJob = job;
-    if (job && job.ready && job.streamUrl) {
+    if (job && job.ready && playbackUrl) {
         streamEntry.playable = true;
         streamEntry.bridgeable = false;
-        streamEntry.status = 'Playable';
+        streamEntry.status = playback && playback.mode === 'transcode'
+            ? 'Live transcode'
+            : playback && playback.mode === 'remux'
+                ? 'Lossless remux'
+                : 'Playable';
         streamEntry.raw = cloneStreamRaw(streamEntry.raw) || streamEntry.raw || {};
-        streamEntry.raw.url = job.streamUrl;
+        streamEntry.raw.url = playbackUrl;
+        if (job.streamUrl && job.streamUrl !== playbackUrl) {
+            streamEntry.raw.directUrl = job.streamUrl;
+        }
+        if (playback) {
+            streamEntry.raw.playbackMode = playback.mode;
+            streamEntry.raw.playbackQuality = playback.quality;
+            streamEntry.raw.playbackReasons = playback.reasons;
+            streamEntry.raw.playbackLive = !!playback.live;
+            streamEntry.raw.fileProgress = playback.fileProgress;
+        }
         if (Array.isArray(job.subtitles)) {
             streamEntry.raw.subtitles = job.subtitles;
         }
-        streamEntry.description = streamEntry.description || 'Torrent bridge stream is ready.';
+        streamEntry.description = playback && playback.reasons && playback.reasons.length
+            ? playback.reasons.join(' ')
+            : streamEntry.description || 'Torrent bridge stream is ready.';
         return;
     }
 

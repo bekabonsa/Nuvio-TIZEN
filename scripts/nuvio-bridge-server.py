@@ -8,8 +8,11 @@ import mimetypes
 import os
 import re
 import secrets
+import shutil
 import sqlite3
+import subprocess
 import sys
+import threading
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -23,6 +26,14 @@ QBT_PASSWORD = os.environ.get("QBITTORRENT_PASSWORD", "")
 BRIDGE_TOKEN = os.environ.get("BRIDGE_TOKEN", "")
 BRIDGE_PORT = int(os.environ.get("BRIDGE_PORT", "8788"))
 IMDB_HELPER_BASE_URL = os.environ.get("IMDB_HELPER_BASE_URL", "http://127.0.0.1:8791").rstrip("/")
+FFMPEG_BIN = os.environ.get("FFMPEG_PATH", "ffmpeg")
+FFPROBE_BIN = os.environ.get("FFPROBE_PATH", "ffprobe")
+BRIDGE_TRANSCODE_VIDEO_CODEC = os.environ.get("BRIDGE_TRANSCODE_VIDEO_CODEC", "libx265")
+BRIDGE_TRANSCODE_PRESET = os.environ.get("BRIDGE_TRANSCODE_PRESET", "faster")
+BRIDGE_TRANSCODE_CRF = os.environ.get("BRIDGE_TRANSCODE_CRF", "18")
+BRIDGE_TRANSCODE_AUDIO_CODEC = os.environ.get("BRIDGE_TRANSCODE_AUDIO_CODEC", "ac3")
+BRIDGE_TRANSCODE_AUDIO_BITRATE = os.environ.get("BRIDGE_TRANSCODE_AUDIO_BITRATE", "640k")
+BRIDGE_TRANSCODE_READ_IDLE_SECONDS = int(os.environ.get("BRIDGE_TRANSCODE_READ_IDLE_SECONDS", "120"))
 DOWNLOAD_ROOT = Path(os.environ.get("DOWNLOAD_ROOT", "/srv/torrents/downloads")).resolve()
 METADATA_ROOT = Path(os.environ.get("METADATA_ROOT", "/srv/torrents/metadata")).resolve()
 AUTH_DB_PATH = Path(os.environ.get("NUVIO_AUTH_DB_PATH", str(METADATA_ROOT / "nuvio-auth.sqlite3"))).resolve()
@@ -50,6 +61,9 @@ METADATA_KEYS = {
 STREAM_WAIT_SECONDS = 25
 STREAM_WAIT_INTERVAL_SECONDS = 0.5
 SUBTITLE_WAIT_SECONDS = 60
+DIRECT_VIDEO_CODECS = {"h264", "hevc", "h265"}
+DIRECT_AUDIO_CODECS = {"aac", "ac3", "eac3", "mp3"}
+TRANSCODE_AUDIO_CODECS = {"dts", "dca", "truehd", "mlp", "flac", "opus", "vorbis"}
 
 session = requests.Session()
 last_login = 0
@@ -729,6 +743,348 @@ def safe_file_path(info, file_item):
     return safe_file_path_under(Path(info.get("save_path") or DOWNLOAD_ROOT).resolve(), safe_relative_path(file_item))
 
 
+def command_exists(command):
+    if not command:
+        return False
+    if os.path.isabs(command) or os.sep in command:
+        return Path(command).exists()
+    return shutil.which(command) is not None
+
+
+def ffprobe_media(path):
+    if not command_exists(FFPROBE_BIN):
+        return None
+    try:
+        result = subprocess.run(
+            [
+                FFPROBE_BIN,
+                "-v",
+                "quiet",
+                "-analyzeduration",
+                "100M",
+                "-probesize",
+                "100M",
+                "-print_format",
+                "json",
+                "-show_streams",
+                "-show_format",
+                str(path),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        payload = json.loads(result.stdout or "{}")
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def first_probe_stream(probe, codec_type):
+    for stream in (probe or {}).get("streams") or []:
+        if stream.get("codec_type") == codec_type:
+            return stream
+    return None
+
+
+def probe_stream_text(stream):
+    values = []
+    if not stream:
+        return ""
+    for key in ("codec_name", "codec_long_name", "profile", "codec_tag_string", "pix_fmt", "color_transfer"):
+        values.append(str(stream.get(key) or ""))
+    tags = stream.get("tags") if isinstance(stream.get("tags"), dict) else {}
+    for value in tags.values():
+        values.append(str(value or ""))
+    for item in stream.get("side_data_list") or []:
+        if isinstance(item, dict):
+            values.extend(str(value or "") for value in item.values())
+    return " ".join(values).lower()
+
+
+def media_name_text(file_item, path=None):
+    values = [str(file_item.get("name") or "")]
+    if path:
+        values.append(path.name)
+    return " ".join(values).lower()
+
+
+def detects_dolby_vision(video_stream, file_item, path=None):
+    text = probe_stream_text(video_stream) + " " + media_name_text(file_item, path)
+    return bool(re.search(r"(^|[^a-z0-9])(dv|dovi|dolby[ ._\-]?vision)([^a-z0-9]|$)", text))
+
+
+def detects_hdr(video_stream, file_item, path=None):
+    text = probe_stream_text(video_stream) + " " + media_name_text(file_item, path)
+    return bool(
+        "smpte2084" in text
+        or "arib-std-b67" in text
+        or re.search(r"(^|[^a-z0-9])(hdr|hdr10|hlg)([^a-z0-9]|$)", text)
+    )
+
+
+def normalized_codec(stream):
+    codec = str(stream.get("codec_name") or "").lower() if stream else ""
+    return "h265" if codec == "hevc" else codec
+
+
+def selected_playback_audio_codec(audio_stream):
+    return normalized_codec(audio_stream)
+
+
+def can_copy_audio_to_ts(audio_stream):
+    codec = selected_playback_audio_codec(audio_stream)
+    return not audio_stream or codec in DIRECT_AUDIO_CODECS
+
+
+def audio_requires_transcode(audio_stream):
+    codec = selected_playback_audio_codec(audio_stream)
+    return bool(audio_stream and codec in TRANSCODE_AUDIO_CODECS)
+
+
+def build_stream_url(handler, torrent_hash, file_index, token):
+    return f"{public_base(handler)}/stream/{torrent_hash}/{file_index}?token={token}"
+
+
+def build_transcode_url(handler, torrent_hash, file_index, token, mode):
+    return f"{public_base(handler)}/transcode/{torrent_hash}/{file_index}?token={token}&mode={mode}"
+
+
+def build_playback_plan(handler, torrent_hash, file_item, path, token):
+    file_index = int(file_item.get("index", 0))
+    direct_url = build_stream_url(handler, torrent_hash, file_index, token)
+    probe = ffprobe_media(path)
+    video = first_probe_stream(probe, "video")
+    audio = first_probe_stream(probe, "audio")
+    video_codec = normalized_codec(video)
+    audio_codec = selected_playback_audio_codec(audio)
+    reasons = []
+    mode = "direct"
+    compatible = True
+    dolby_vision = detects_dolby_vision(video, file_item, path)
+    hdr = detects_hdr(video, file_item, path)
+
+    if dolby_vision:
+        compatible = False
+        mode = "transcode"
+        reasons.append("Dolby Vision was detected; Samsung AVPlay commonly rejects DV in MKV.")
+    elif video and video_codec and video_codec not in DIRECT_VIDEO_CODECS:
+        compatible = False
+        mode = "transcode"
+        reasons.append(f"Video codec {video_codec} is not in the direct playback allowlist.")
+    elif audio_requires_transcode(audio):
+        compatible = False
+        mode = "remux"
+        reasons.append(f"Audio codec {audio_codec} is likely unsafe for AVPlay; video can be copied.")
+
+    if mode == "direct":
+        playback_url = direct_url
+        quality = "direct"
+    elif mode == "remux":
+        playback_url = build_transcode_url(handler, torrent_hash, file_index, token, "remux")
+        quality = "lossless-video-copy"
+    else:
+        playback_url = build_transcode_url(handler, torrent_hash, file_index, token, "transcode")
+        quality = "high-quality-video-transcode"
+
+    return {
+        "url": playback_url,
+        "directUrl": direct_url,
+        "mode": mode,
+        "compatible": compatible,
+        "needsTranscode": mode != "direct",
+        "quality": quality,
+        "reasons": reasons,
+        "probe": {
+            "videoCodec": video_codec,
+            "audioCodec": audio_codec,
+            "width": video.get("width") if video else None,
+            "height": video.get("height") if video else None,
+            "profile": video.get("profile") if video else "",
+            "hdr": hdr,
+            "dolbyVision": dolby_vision,
+            "container": Path(path).suffix.lower().lstrip("."),
+            "ffprobe": bool(probe),
+        },
+    }
+
+
+def normalize_transcode_mode(value, fallback):
+    mode = str(value or fallback or "auto").strip().lower()
+    if mode not in ("auto", "direct", "remux", "transcode"):
+        return fallback if fallback in ("remux", "transcode") else "auto"
+    return mode
+
+
+def normalize_start_seconds(value):
+    try:
+        seconds = float(value or 0)
+    except Exception:
+        return 0
+    if seconds <= 0:
+        return 0
+    return int(seconds)
+
+
+def ffmpeg_playback_args(path, plan, mode, start_seconds, pipe_input=False):
+    probe = ffprobe_media(path) or {}
+    video = first_probe_stream(probe, "video")
+    audio = first_probe_stream(probe, "audio")
+    active_mode = normalize_transcode_mode(mode, plan.get("mode"))
+    if active_mode in ("auto", "direct"):
+        active_mode = plan.get("mode") if plan.get("mode") != "direct" else "remux"
+    hdr = bool(plan.get("probe", {}).get("hdr")) or detects_hdr(video, {}, path)
+    args = [
+        FFMPEG_BIN,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+genpts",
+    ]
+
+    if start_seconds > 0:
+        args.extend(["-ss", str(start_seconds)])
+
+    if pipe_input:
+        args.extend(["-seekable", "0"])
+
+    args.extend([
+        "-analyzeduration",
+        "100M",
+        "-probesize",
+        "100M",
+        "-i",
+        "pipe:0" if pipe_input else str(path),
+        "-map",
+        "0:v:0",
+    ])
+
+    if audio:
+        args.extend(["-map", f"0:{audio.get('index')}"])
+    else:
+        args.extend(["-map", "0:a:0?"])
+
+    args.extend(["-sn", "-dn", "-map_metadata", "-1"])
+
+    if active_mode == "transcode":
+        codec = BRIDGE_TRANSCODE_VIDEO_CODEC
+        args.extend(["-c:v", codec])
+        if codec in ("libx265", "hevc", "hevc_nvenc", "hevc_vaapi"):
+            args.extend(["-preset", BRIDGE_TRANSCODE_PRESET, "-crf", BRIDGE_TRANSCODE_CRF])
+            if hdr:
+                args.extend([
+                    "-pix_fmt",
+                    "yuv420p10le",
+                    "-color_primaries",
+                    "bt2020",
+                    "-color_trc",
+                    "smpte2084",
+                    "-colorspace",
+                    "bt2020nc",
+                    "-x265-params",
+                    "repeat-headers=1:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc",
+                ])
+            else:
+                args.extend(["-pix_fmt", "yuv420p"])
+        elif codec in ("libx264", "h264", "h264_nvenc", "h264_vaapi"):
+            args.extend(["-preset", BRIDGE_TRANSCODE_PRESET, "-crf", BRIDGE_TRANSCODE_CRF, "-pix_fmt", "yuv420p"])
+    else:
+        args.extend(["-c:v", "copy"])
+
+    if audio:
+        if can_copy_audio_to_ts(audio):
+            args.extend(["-c:a", "copy"])
+        else:
+            args.extend([
+                "-c:a",
+                BRIDGE_TRANSCODE_AUDIO_CODEC,
+                "-b:a",
+                BRIDGE_TRANSCODE_AUDIO_BITRATE,
+                "-ac",
+                "6",
+            ])
+    else:
+        args.extend([
+            "-c:a",
+            BRIDGE_TRANSCODE_AUDIO_CODEC,
+            "-b:a",
+            BRIDGE_TRANSCODE_AUDIO_BITRATE,
+            "-ac",
+            "6",
+        ])
+
+    args.extend([
+        "-avoid_negative_ts",
+        "make_zero",
+        "-muxdelay",
+        "0",
+        "-muxpreload",
+        "0",
+        "-mpegts_flags",
+        "+resend_headers",
+        "-f",
+        "mpegts",
+        "pipe:1",
+    ])
+    return args, active_mode
+
+
+def file_progress_value(info, file_item):
+    for source in (file_item, info):
+        try:
+            value = float(source.get("progress"))
+            if value >= 0:
+                return min(1.0, value)
+        except Exception:
+            continue
+    return 0.0
+
+
+def should_pipe_growing_file(info, file_item, start_seconds):
+    return start_seconds <= 0 and file_progress_value(info, file_item) < 0.999
+
+
+def feed_growing_file(stdin, path, total_size):
+    position = 0
+    idle_started = None
+    try:
+        with path.open("rb") as handle:
+            while position < total_size:
+                try:
+                    available = path.stat().st_size
+                except FileNotFoundError:
+                    available = 0
+
+                if position >= available:
+                    if idle_started is None:
+                        idle_started = time.time()
+                    if time.time() - idle_started >= BRIDGE_TRANSCODE_READ_IDLE_SECONDS:
+                        break
+                    time.sleep(STREAM_WAIT_INTERVAL_SECONDS)
+                    continue
+
+                idle_started = None
+                handle.seek(position)
+                to_read = min(1024 * 1024, available - position)
+                chunk = handle.read(to_read)
+                if not chunk:
+                    time.sleep(STREAM_WAIT_INTERVAL_SECONDS)
+                    continue
+                stdin.write(chunk)
+                stdin.flush()
+                position += len(chunk)
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        try:
+            stdin.close()
+        except Exception:
+            pass
+
+
 def prioritize_selected_file(torrent_hash, preferred_index):
     if preferred_index is None or preferred_index == "":
         return
@@ -795,10 +1151,12 @@ def make_status(handler, torrent_hash, preferred_index=None, info=None):
     torrent_hash = str(info.get("hash") or torrent_hash).lower()
     file_item = selected_file(torrent_hash, preferred_index)
     stream_url = None
+    playback = None
     file_exists = False
     subtitles = []
     token = parse_qs(urlparse(handler.path).query).get("token", [""])[0] or BRIDGE_TOKEN
     if file_item:
+        path = None
         try:
             path = resolve_file_path(info, file_item)
             file_exists = bool(path)
@@ -810,7 +1168,10 @@ def make_status(handler, torrent_hash, preferred_index=None, info=None):
             subtitles = []
         if file_exists:
             file_index = int(file_item.get("index", 0))
-            stream_url = f"{public_base(handler)}/stream/{torrent_hash}/{file_index}?token={token}"
+            stream_url = build_stream_url(handler, torrent_hash, file_index, token)
+            playback = build_playback_plan(handler, torrent_hash, file_item, path, token)
+            playback["live"] = file_progress_value(info, file_item) < 0.999
+            playback["fileProgress"] = file_progress_value(info, file_item)
     return {
         "hash": torrent_hash,
         "found": True,
@@ -831,6 +1192,8 @@ def make_status(handler, torrent_hash, preferred_index=None, info=None):
         "file": file_item,
         "metadata": read_metadata(torrent_hash),
         "streamUrl": stream_url,
+        "playbackUrl": playback.get("url") if playback else stream_url,
+        "playback": playback,
         "subtitles": subtitles,
     }
 
@@ -1531,6 +1894,10 @@ class Handler(BaseHTTPRequestHandler):
         if stream_match:
             self.stream_file(stream_match.group(1), int(stream_match.group(2)))
             return
+        transcode_match = re.match(r"^/transcode/([^/]+)/(\d+)$", parsed.path)
+        if transcode_match:
+            self.transcode_file(transcode_match.group(1), int(transcode_match.group(2)))
+            return
         subtitle_match = re.match(r"^/subtitle/([^/]+)/(\d+)$", parsed.path)
         if subtitle_match:
             self.subtitle_file(subtitle_match.group(1), int(subtitle_match.group(2)))
@@ -1687,6 +2054,81 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
+
+    def transcode_file(self, torrent_hash, index):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        requested_mode = params.get("mode", ["auto"])[0]
+        start_seconds = normalize_start_seconds(params.get("start", [0])[0])
+        info = torrent_info(torrent_hash)
+        if not info:
+            self.send_json(404, {"error": "Torrent not found"})
+            return
+        file_item = selected_file(torrent_hash, index)
+        if not file_item:
+            self.send_json(404, {"error": "File not found"})
+            return
+        if not command_exists(FFMPEG_BIN):
+            self.send_json(500, {"error": "ffmpeg is not available on this bridge node"})
+            return
+        try:
+            path = resolve_file_path(info, file_item)
+        except Exception as error:
+            self.send_json(400, {"error": str(error)})
+            return
+        if not path:
+            self.send_json(409, {"error": "File is not ready yet"})
+            return
+
+        token = params.get("token", [""])[0] or BRIDGE_TOKEN
+        plan = build_playback_plan(self, str(info.get("hash") or torrent_hash).lower(), file_item, path, token)
+        total_size = int(file_item.get("size") or path.stat().st_size)
+        pipe_input = should_pipe_growing_file(info, file_item, start_seconds)
+        args, active_mode = ffmpeg_playback_args(path, plan, requested_mode, start_seconds, pipe_input)
+        try:
+            child = subprocess.Popen(
+                args,
+                stdin=subprocess.PIPE if pipe_input else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as error:
+            self.send_json(500, {"error": str(error)})
+            return
+
+        if pipe_input:
+            threading.Thread(
+                target=feed_growing_file,
+                args=(child.stdin, path, total_size),
+                daemon=True,
+            ).start()
+
+        self.send_response(200)
+        self.send_cors_headers()
+        self.send_header("Content-Type", "video/mp2t")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Nuvio-Playback-Mode", active_mode)
+        self.end_headers()
+
+        try:
+            while True:
+                chunk = child.stdout.read(1024 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            try:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+            finally:
+                if child.stdout:
+                    child.stdout.close()
 
     def subtitle_file(self, torrent_hash, index):
         info = torrent_info(torrent_hash)

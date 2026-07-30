@@ -486,6 +486,7 @@ function cloneStreamRaw(raw) {
     var clone = {};
     var keys = [
         'url',
+        'directUrl',
         'externalUrl',
         'infoHash',
         'fileIdx',
@@ -496,7 +497,12 @@ function cloneStreamRaw(raw) {
         'behaviorHints',
         'subtitles',
         'sources',
-        'proxyHeaders'
+        'proxyHeaders',
+        'playbackMode',
+        'playbackQuality',
+        'playbackReasons',
+        'playbackLive',
+        'fileProgress'
     ];
 
     if (!raw || typeof raw !== 'object') {

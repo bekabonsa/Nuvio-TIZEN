@@ -1378,18 +1378,30 @@ function buildDownloadedLibrarySelection(item) {
 
 function buildDownloadedLibraryStreamEntry(item) {
     var metadata = item && item.metadata || {};
+    var playback = item && item.playback || null;
+    var playbackUrl = item && (item.playbackUrl || playback && playback.url || item.streamUrl);
     var title = getDownloadedLibraryTitle(item);
     var subtitle = getDownloadedLibrarySubtitle(item);
     var fileName = getDownloadedLibraryFileName(item);
     var fileIndex = getDownloadedLibraryFileIndex(item);
     var raw = {
-        url: item.streamUrl,
+        url: playbackUrl,
         name: metadata.streamTitle || fileName || title,
         title: metadata.streamTitle || fileName || title,
         description: subtitle,
         infoHash: item.hash
     };
 
+    if (item && item.streamUrl && item.streamUrl !== playbackUrl) {
+        raw.directUrl = item.streamUrl;
+    }
+    if (playback) {
+        raw.playbackMode = playback.mode;
+        raw.playbackQuality = playback.quality;
+        raw.playbackReasons = playback.reasons;
+        raw.playbackLive = !!playback.live;
+        raw.fileProgress = playback.fileProgress;
+    }
     if (Array.isArray(item.subtitles)) {
         raw.subtitles = item.subtitles;
     }

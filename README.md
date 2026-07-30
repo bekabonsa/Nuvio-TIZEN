@@ -217,6 +217,18 @@ NUVIO_ADDON_URLS='https://v3-cinemeta.strem.io,https://opensubtitles-v3.strem.io
 python3 scripts/nuvio-bridge-server.py
 ```
 
+For cached torrent playback, the bridge probes ready files with `ffprobe`. Direct streams are used when safe, DTS/TrueHD-style audio can be remuxed with video copied, and Dolby Vision or unsupported video is served through a live MPEG-TS transcode URL. Install `ffmpeg` and `ffprobe` on the bridge node and tune quality/CPU with:
+
+```sh
+FFMPEG_PATH=ffmpeg
+FFPROBE_PATH=ffprobe
+BRIDGE_TRANSCODE_VIDEO_CODEC=libx265
+BRIDGE_TRANSCODE_PRESET=faster
+BRIDGE_TRANSCODE_CRF=18
+```
+
+Remux mode keeps video lossless. Dolby Vision fallback must re-encode video because Samsung AVPlay commonly rejects DV-in-MKV; lower `BRIDGE_TRANSCODE_CRF` values preserve more quality at higher CPU cost.
+
 Point the TV app at the Oracle bridge in `js/local-config.js` before packaging:
 
 ```js

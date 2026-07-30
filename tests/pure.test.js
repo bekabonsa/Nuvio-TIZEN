@@ -411,6 +411,30 @@ function testTorrentBridgeHelpers() {
     assert.strictEqual(payload.infoHash, '0123456789abcdef0123456789abcdef01234567');
     assert.strictEqual(payload.fileIndex, 2);
     assert.strictEqual(payload.title, 'Example');
+
+    const bridgedEntry = {
+      raw: {
+        infoHash: '0123456789abcdef0123456789abcdef01234567',
+        fileIdx: 2
+      },
+      description: ''
+    };
+    sandbox.updateTorrentBridgeEntry(bridgedEntry, {
+      ready: true,
+      streamUrl: 'http://bridge.example.test:8788/stream/0123456789abcdef0123456789abcdef01234567/2?token=secret',
+      playbackUrl: 'http://bridge.example.test:8788/transcode/0123456789abcdef0123456789abcdef01234567/2?token=secret&mode=transcode',
+      playback: {
+        url: 'http://bridge.example.test:8788/transcode/0123456789abcdef0123456789abcdef01234567/2?token=secret&mode=transcode',
+        mode: 'transcode',
+        quality: 'high-quality-video-transcode',
+        reasons: ['Dolby Vision was detected.']
+      }
+    });
+    assert.strictEqual(bridgedEntry.playable, true);
+    assert.strictEqual(bridgedEntry.status, 'Live transcode');
+    assert.strictEqual(bridgedEntry.raw.url.indexOf('/transcode/'), 'http://bridge.example.test:8788'.length);
+    assert.strictEqual(bridgedEntry.raw.directUrl.indexOf('/stream/'), 'http://bridge.example.test:8788'.length);
+    assert.strictEqual(sandbox.isBridgeStreamEntry(bridgedEntry), true);
   } finally {
     sandbox.TORRENT_BRIDGE_BASE_URL = previousBaseUrl;
     sandbox.TORRENT_BRIDGE_TOKEN = previousToken;
