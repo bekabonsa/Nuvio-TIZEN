@@ -3040,6 +3040,112 @@ function applySavedResumeVideoFallback(entry) {
     return true;
 }
 
+function getSeriesVideosFromMeta(meta) {
+    return meta && Array.isArray(meta.videos) ? meta.videos.slice() : [];
+}
+
+function getAvailableSeasonsFromVideos(videos) {
+    return uniqueList((videos || []).map(getVideoSeason)).sort(function(left, right) {
+        return left - right;
+    });
+}
+
+function setSeriesVideos(videos) {
+    state.allSeriesVideos = (videos || []).slice();
+    state.availableSeasons = getAvailableSeasonsFromVideos(state.allSeriesVideos);
+}
+
+function ensureSeriesVideoAvailable(video) {
+    if (!video || !video.id) {
+        return;
+    }
+
+    if (state.allSeriesVideos.some(function(candidate) {
+        return candidate && candidate.id === video.id;
+    })) {
+        return;
+    }
+
+    setSeriesVideos(state.allSeriesVideos.concat([video]));
+}
+
+function applyDirectSeriesResumeMetadata(entry, meta) {
+    var videos = getSeriesVideosFromMeta(meta);
+    var currentVideo = state.selectedVideo || getDirectResumeVideo(entry);
+    var matchedVideo;
+
+    if (!entry || !entry.item || !videos.length || !currentVideo) {
+        return false;
+    }
+
+    state.selectedItem = meta || state.selectedItem || entry.item;
+    applySelectedItemFallbacks(entry.item);
+    applySelectedImdbApiTitleToSelection();
+    setSeriesVideos(videos);
+
+    matchedVideo = findResumeVideo({ video: currentVideo }) || findResumeVideo(entry);
+    if (matchedVideo) {
+        state.selectedSeason = getVideoSeason(matchedVideo);
+        state.selectedVideo = matchedVideo;
+    } else {
+        state.selectedSeason = getVideoSeason(currentVideo);
+        state.selectedVideo = currentVideo;
+        ensureSeriesVideoAvailable(currentVideo);
+    }
+
+    updateSelectedEpisodesForSeason();
+    return true;
+}
+
+function isSameSeriesEpisode(left, right) {
+    if (!left || !right) {
+        return false;
+    }
+    if (left.id && right.id && left.id === right.id) {
+        return true;
+    }
+    return getVideoSeason(left) === getVideoSeason(right)
+        && getVideoEpisode(left) === getVideoEpisode(right);
+}
+
+function isDirectSeriesResumeSelectionCurrent(entry, requestKey, resumeVideo) {
+    return !!(entry && entry.item
+        && state.selectedType === 'series'
+        && state.selectedItem
+        && state.selectedItem.id === entry.item.id
+        && state.selectedDetailRequestKey === requestKey
+        && isSameSeriesEpisode(state.selectedVideo, resumeVideo));
+}
+
+function hydrateDirectSeriesResumeMetadata(entry) {
+    var requestKey;
+    var resumeVideo;
+
+    if (!entry || normalizeAddonType(entry.kind) !== 'series' || !entry.item || !entry.item.id) {
+        return;
+    }
+
+    requestKey = state.selectedDetailRequestKey;
+    resumeVideo = state.selectedVideo || getDirectResumeVideo(entry);
+    fetchMetaFromAddons('series', entry.item.id).then(function(payload) {
+        var meta = payload && payload.meta ? payload.meta : payload;
+
+        if (!isDirectSeriesResumeSelectionCurrent(entry, requestKey, resumeVideo)) {
+            return;
+        }
+        if (!applyDirectSeriesResumeMetadata(entry, meta)) {
+            return;
+        }
+
+        setPlayerNextEpisodeUi();
+        if (state.currentView === 'addons') {
+            renderAddons();
+        }
+    }).catch(function() {
+        // Direct resume already has a playable stream; metadata hydration only enables episode navigation.
+    });
+}
+
 function resumeContinueEntryDirectly(entry) {
     var stream = entry && entry.stream;
     var kind = normalizeAddonType(entry && entry.kind);
@@ -3070,6 +3176,9 @@ function resumeContinueEntryDirectly(entry) {
     state.pendingResumeStream = null;
 
     openStream(stream);
+    if (kind === 'series') {
+        hydrateDirectSeriesResumeMetadata(entry);
+    }
     return true;
 }
 
@@ -3141,17 +3250,12 @@ function prepareSelection(item, type, options) {
         fetchMetaFromAddons('series', item.id)
             .then(function(payload) {
                 var meta = payload && payload.meta ? payload.meta : payload;
-                var seasons;
                 var matchedResumeVideo;
                 state.selectedItem = meta || item;
                 applySelectedItemFallbacks(item);
                 applySelectedImdbApiTitleToSelection();
-                state.allSeriesVideos = meta && Array.isArray(meta.videos) ? meta.videos.slice() : [];
-                seasons = uniqueList(state.allSeriesVideos.map(getVideoSeason)).sort(function(left, right) {
-                    return left - right;
-                });
-                state.availableSeasons = seasons;
-                state.selectedSeason = seasons.length ? seasons[0] : null;
+                setSeriesVideos(getSeriesVideosFromMeta(meta));
+                state.selectedSeason = state.availableSeasons.length ? state.availableSeasons[0] : null;
                 matchedResumeVideo = applyResumeVideoSelection(resumeEntry);
                 if (state.autoplayPending && resumeEntry && resumeEntry.video && !matchedResumeVideo && applySavedResumeVideoFallback(resumeEntry)) {
                     renderAddons();

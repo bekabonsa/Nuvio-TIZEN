@@ -830,6 +830,33 @@ function testResumeAndTranscodedTimelineHelpers() {
   assert.strictEqual(sandbox.state.availableSeasons.length, 1);
   assert.strictEqual(sandbox.state.availableSeasons[0], 2);
 
+  sandbox.state.selectedItem = { id: 'ttshow', name: 'Show' };
+  sandbox.state.selectedType = 'series';
+  sandbox.state.selectedVideo = { id: 'ttshow:1:1', season: 1, episode: 1, title: 'Pilot' };
+  sandbox.state.selectedSeason = 1;
+  sandbox.state.allSeriesVideos = [sandbox.state.selectedVideo];
+  sandbox.state.availableSeasons = [1];
+  sandbox.state.selectedEpisodes = [sandbox.state.selectedVideo];
+  assert.strictEqual(sandbox.getNextEpisode(), null);
+  assert.strictEqual(
+    sandbox.applyDirectSeriesResumeMetadata({
+      kind: 'series',
+      item: { id: 'ttshow', name: 'Show' },
+      video: { id: 'ttshow:1:1', season: 1, episode: 1, title: 'Pilot' }
+    }, {
+      id: 'ttshow',
+      name: 'Show',
+      videos: [
+        { id: 'ttshow:1:1', season: 1, episode: 1, title: 'Pilot' },
+        { id: 'ttshow:1:2', season: 1, episode: 2, title: 'Second' },
+        { id: 'ttshow:2:1', season: 2, episode: 1, title: 'Premiere' }
+      ]
+    }),
+    true
+  );
+  assert.strictEqual(sandbox.getNextEpisode().id, 'ttshow:1:2');
+  assert.strictEqual(sandbox.state.availableSeasons.length, 2);
+
   const previousOpenStream = sandbox.openStream;
   let openedStream = null;
   sandbox.openStream = (stream) => {
