@@ -1,6 +1,31 @@
 var CINEMETA_BASE = 'https://v3-cinemeta.strem.io';
 var OPENSUBTITLES_BASE = 'https://opensubtitles-v3.strem.io';
 var DEFAULT_ADDON_URLS = [CINEMETA_BASE, OPENSUBTITLES_BASE];
+var LOCAL_ADDON_URLS = [];
+var DEFAULT_STREAM_SOURCE_MODE = 'torrentio-rd';
+var STREAM_REQUEST_TIMEOUT_MS = 12000;
+var STREAM_SOURCE_FILTERS = [
+    {
+        id: 'torrentio-rd',
+        label: 'TorrentioRD',
+        type: 'addon',
+        urlIncludes: ['torrentio.strem.fun', 'realdebrid='],
+        alwaysVisible: true
+    },
+    {
+        id: 'comet',
+        label: 'Comet',
+        type: 'addon',
+        urlIncludes: ['comet.elfhosted.com'],
+        alwaysVisible: true
+    },
+    {
+        id: 'bridge',
+        label: 'Bridge',
+        type: 'bridge',
+        alwaysVisible: true
+    }
+];
 var NUVIO_API_BASE = 'https://nuvio.tv';
 var SUPABASE_URL = 'https://dpyhjjcoabcglfmgecug.supabase.co';
 var NUVIO_AUTH_BASE_URL = SUPABASE_URL;
@@ -163,6 +188,7 @@ var VIEW_META = {
  * @property {string} id
  * @property {string} transportUrl
  * @property {{name:string, resources:Array, catalogs:Array, types:Array}=} manifest
+ * @property {boolean=} localOnly
  */
 
 /**
@@ -297,9 +323,10 @@ var state = {
     selectedVideo: null,
     detailMode: 'details',
     streams: [],
-    streamSourceMode: 'cached',
+    streamSourceMode: '',
     streamFilterCached: true,
     streamFilterBridge: false,
+    streamRequestId: 0,
     currentStream: null,
     torrentBridgeJobs: {},
     audioTracks: [],

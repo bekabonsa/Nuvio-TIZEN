@@ -10,3 +10,7 @@
 // NUVIO_DEFAULT_LOGIN_EMAIL = 'your-local-login-email';
 // NUVIO_DEFAULT_LOGIN_PASSWORD = 'your-local-login-password';
 // TRAILER_DIRECT_STREAM_ENABLED = false;
+// DEFAULT_STREAM_SOURCE_MODE = 'comet';
+// LOCAL_ADDON_URLS = [
+//     'https://comet.elfhosted.com/<your-private-comet-config>/manifest.json'
+// ];

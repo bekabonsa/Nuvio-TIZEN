@@ -446,10 +446,25 @@ function testStreamSourceFilterMode() {
   const previousMode = sandbox.state.streamSourceMode;
   const previousCached = sandbox.state.streamFilterCached;
   const previousBridge = sandbox.state.streamFilterBridge;
-  const cachedStream = {
-    title: 'Cached stream',
+  const previousBaseUrl = sandbox.TORRENT_BRIDGE_BASE_URL;
+  const previousToken = sandbox.TORRENT_BRIDGE_TOKEN;
+  const torrentioStream = {
+    title: 'TorrentioRD stream',
     playable: true,
-    raw: { url: 'https://cdn.example.test/movie.mp4' }
+    bridgeable: true,
+    addonName: 'Torrentio',
+    addonBaseUrl: 'https://torrentio.strem.fun/qualityfilter=cam%7Crealdebrid=secret',
+    raw: {
+      url: 'https://realdebrid.example.test/movie.mkv',
+      infoHash: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    }
+  };
+  const cometStream = {
+    title: 'Comet stream',
+    playable: true,
+    addonName: 'Comet',
+    addonBaseUrl: 'https://comet.elfhosted.com/config',
+    raw: { url: 'https://comet.example.test/movie.mp4' }
   };
   const bridgeStream = {
     title: 'Bridge stream',
@@ -459,15 +474,26 @@ function testStreamSourceFilterMode() {
   };
 
   try {
-    sandbox.state.streams = [cachedStream, bridgeStream];
+    sandbox.TORRENT_BRIDGE_BASE_URL = 'http://bridge.example.test:8788';
+    sandbox.TORRENT_BRIDGE_TOKEN = 'secret';
+    sandbox.state.streams = [torrentioStream, cometStream, bridgeStream];
 
-    sandbox.syncStreamSourceFilterState('cached');
-    assert.strictEqual(sandbox.state.streamSourceMode, 'cached');
+    sandbox.syncStreamSourceFilterState('torrentio-rd');
+    assert.strictEqual(sandbox.state.streamSourceMode, 'torrentio-rd');
     assert.strictEqual(sandbox.state.streamFilterCached, true);
     assert.strictEqual(sandbox.state.streamFilterBridge, false);
     assert.deepStrictEqual(
       sandbox.getVisibleStreams().map((stream) => stream.title),
-      ['Cached stream']
+      ['TorrentioRD stream']
+    );
+    assert.strictEqual(sandbox.isCachedStreamEntry(torrentioStream), true);
+    assert.strictEqual(sandbox.isBridgeStreamEntry(torrentioStream), false);
+
+    sandbox.syncStreamSourceFilterState('comet');
+    assert.strictEqual(sandbox.state.streamSourceMode, 'comet');
+    assert.deepStrictEqual(
+      sandbox.getVisibleStreams().map((stream) => stream.title),
+      ['Comet stream']
     );
 
     sandbox.syncStreamSourceFilterState('bridge');
@@ -487,11 +513,18 @@ function testStreamSourceFilterMode() {
       sandbox.getVisibleStreams().map((stream) => stream.title),
       ['Bridge stream']
     );
+
+    sandbox.state.streamSourceMode = 'cached';
+    sandbox.state.streamFilterCached = true;
+    sandbox.state.streamFilterBridge = false;
+    assert.strictEqual(sandbox.getStreamSourceMode(), 'torrentio-rd');
   } finally {
     sandbox.state.streams = previousStreams;
     sandbox.state.streamSourceMode = previousMode;
     sandbox.state.streamFilterCached = previousCached;
     sandbox.state.streamFilterBridge = previousBridge;
+    sandbox.TORRENT_BRIDGE_BASE_URL = previousBaseUrl;
+    sandbox.TORRENT_BRIDGE_TOKEN = previousToken;
   }
 }
 

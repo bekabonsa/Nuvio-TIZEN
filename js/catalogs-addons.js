@@ -149,6 +149,20 @@ function buildBuiltinAddonManifest(baseUrl) {
         };
     }
 
+    if (cleanBaseUrl.indexOf('https://comet.elfhosted.com') === 0) {
+        return {
+            id: 'comet.elfhosted',
+            name: 'Comet',
+            version: 'fallback',
+            description: 'Fallback Comet manifest',
+            resources: [
+                { name: 'stream', types: ['movie', 'series'] }
+            ],
+            types: ['movie', 'series'],
+            catalogs: []
+        };
+    }
+
     return null;
 }
 
@@ -1915,10 +1929,13 @@ function normalizeHttpError(error) {
     return (error.status ? 'HTTP ' + error.status + ': ' : '') + message;
 }
 
-function requestJson(url, method, body) {
+function requestJson(url, method, body, timeoutMs) {
     return new Promise(function(resolve, reject) {
         var xhr = new XMLHttpRequest();
         xhr.open(method || 'GET', url, true);
+        if (timeoutMs) {
+            xhr.timeout = timeoutMs;
+        }
         xhr.setRequestHeader('Accept', 'application/json');
         if (body) {
             xhr.setRequestHeader('Content-Type', 'application/json');
@@ -1948,6 +1965,9 @@ function requestJson(url, method, body) {
         };
         xhr.onerror = function() {
             reject(new Error('Network request failed'));
+        };
+        xhr.ontimeout = function() {
+            reject(new Error('Request timed out'));
         };
         xhr.send(body ? JSON.stringify(body) : null);
     });

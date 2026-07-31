@@ -95,6 +95,18 @@ function fetchAddonUrlsFromNuvio() {
     });
 }
 
+function getLocalAddonUrls() {
+    var configured = typeof LOCAL_ADDON_URLS !== 'undefined' && Array.isArray(LOCAL_ADDON_URLS)
+        ? LOCAL_ADDON_URLS
+        : [];
+
+    return configured.map(canonicalizeAddonUrl).filter(Boolean);
+}
+
+function mergeConfiguredAddonUrls(urls) {
+    return uniqueList((urls || []).concat(getLocalAddonUrls()).map(canonicalizeAddonUrl).filter(Boolean));
+}
+
 function buildWatchProgressKey(kind, itemId, video) {
     var normalizedKind = normalizeAddonType(kind);
     var season;
@@ -122,7 +134,9 @@ function buildWatchVideoId(kind, itemId, video) {
 }
 
 function buildNuvioMetadataAddonPayload() {
-    return state.addons.map(function(addon, index) {
+    return state.addons.filter(function(addon) {
+        return !(addon && addon.localOnly);
+    }).map(function(addon, index) {
         var url = addon && addon.transportUrl ? addonBaseUrl(addon.transportUrl) : addon && addon.id || '';
 
         return {
@@ -2572,21 +2586,34 @@ function logout() {
     });
 }
 
+function fetchAddonDefinitionsForUrls(urls) {
+    var uniqueUrls = mergeConfiguredAddonUrls(urls);
+    var localUrls = getLocalAddonUrls();
+    var localUrlLookup = {};
+
+    localUrls.forEach(function(url) {
+        localUrlLookup[canonicalizeAddonUrl(url)] = true;
+    });
+
+    return Promise.all(uniqueUrls.map(function(url) {
+        return fetchAddonDefinition(url).then(function(addon) {
+            if (addon && localUrlLookup[canonicalizeAddonUrl(url)]) {
+                addon.localOnly = true;
+            }
+            return addon;
+        });
+    }));
+}
+
 function fetchInstalledAddons() {
     return fetchAddonUrlsFromNuvio().then(function(urls) {
-        var uniqueUrls = uniqueList((urls || []).map(canonicalizeAddonUrl).filter(Boolean));
-
-        return Promise.all(uniqueUrls.map(function(url) {
-            return fetchAddonDefinition(url);
-        }));
+        return fetchAddonDefinitionsForUrls(urls);
     }).then(function(addons) {
         state.addons = (addons || []).filter(Boolean);
         renderAddons();
         return state.addons;
     }).catch(function(error) {
-        return Promise.all(DEFAULT_ADDON_URLS.map(function(url) {
-            return fetchAddonDefinition(url);
-        })).then(function(defaultAddons) {
+        return fetchAddonDefinitionsForUrls(DEFAULT_ADDON_URLS).then(function(defaultAddons) {
             state.addons = (defaultAddons || []).filter(Boolean);
             renderAddons();
             setAddonsMessage('Could not load synced addons. Showing default catalogs only.', 'error');

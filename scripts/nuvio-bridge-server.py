@@ -33,7 +33,9 @@ BRIDGE_TRANSCODE_PRESET = os.environ.get("BRIDGE_TRANSCODE_PRESET", "faster")
 BRIDGE_TRANSCODE_CRF = os.environ.get("BRIDGE_TRANSCODE_CRF", "18")
 BRIDGE_TRANSCODE_AUDIO_CODEC = os.environ.get("BRIDGE_TRANSCODE_AUDIO_CODEC", "ac3")
 BRIDGE_TRANSCODE_AUDIO_BITRATE = os.environ.get("BRIDGE_TRANSCODE_AUDIO_BITRATE", "640k")
+BRIDGE_TRANSCODE_AUDIO_FORCE = os.environ.get("BRIDGE_TRANSCODE_AUDIO_FORCE", "").lower() in ("1", "true", "yes")
 BRIDGE_TRANSCODE_READ_IDLE_SECONDS = int(os.environ.get("BRIDGE_TRANSCODE_READ_IDLE_SECONDS", "120"))
+BRIDGE_MAX_TRANSCODES = max(1, int(os.environ.get("BRIDGE_MAX_TRANSCODES", "1")))
 DOWNLOAD_ROOT = Path(os.environ.get("DOWNLOAD_ROOT", "/srv/torrents/downloads")).resolve()
 METADATA_ROOT = Path(os.environ.get("METADATA_ROOT", "/srv/torrents/metadata")).resolve()
 AUTH_DB_PATH = Path(os.environ.get("NUVIO_AUTH_DB_PATH", str(METADATA_ROOT / "nuvio-auth.sqlite3"))).resolve()
@@ -64,6 +66,7 @@ SUBTITLE_WAIT_SECONDS = 60
 DIRECT_VIDEO_CODECS = {"h264", "hevc", "h265"}
 DIRECT_AUDIO_CODECS = {"aac", "ac3", "eac3", "mp3"}
 TRANSCODE_AUDIO_CODECS = {"dts", "dca", "truehd", "mlp", "flac", "opus", "vorbis"}
+TRANSCODE_SEMAPHORE = threading.BoundedSemaphore(BRIDGE_MAX_TRANSCODES)
 
 session = requests.Session()
 last_login = 0
@@ -839,6 +842,10 @@ def can_copy_audio_to_ts(audio_stream):
     return not audio_stream or codec in DIRECT_AUDIO_CODECS
 
 
+def should_copy_audio_to_output(audio_stream):
+    return bool(audio_stream and not BRIDGE_TRANSCODE_AUDIO_FORCE and can_copy_audio_to_ts(audio_stream))
+
+
 def audio_requires_transcode(audio_stream):
     codec = selected_playback_audio_codec(audio_stream)
     return bool(audio_stream and codec in TRANSCODE_AUDIO_CODECS)
@@ -995,7 +1002,7 @@ def ffmpeg_playback_args(path, plan, mode, start_seconds, pipe_input=False):
         args.extend(["-c:v", "copy"])
 
     if audio:
-        if can_copy_audio_to_ts(audio):
+        if should_copy_audio_to_output(audio):
             args.extend(["-c:a", "copy"])
         else:
             args.extend([
@@ -2085,50 +2092,63 @@ class Handler(BaseHTTPRequestHandler):
         total_size = int(file_item.get("size") or path.stat().st_size)
         pipe_input = should_pipe_growing_file(info, file_item, start_seconds)
         args, active_mode = ffmpeg_playback_args(path, plan, requested_mode, start_seconds, pipe_input)
-        try:
-            child = subprocess.Popen(
-                args,
-                stdin=subprocess.PIPE if pipe_input else subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+        if not TRANSCODE_SEMAPHORE.acquire(blocking=False):
+            self.send_json(
+                429,
+                {
+                    "error": "Bridge transcode is busy",
+                    "message": "Another live transcode is already running on this node.",
+                },
             )
-        except Exception as error:
-            self.send_json(500, {"error": str(error)})
             return
 
-        if pipe_input:
-            threading.Thread(
-                target=feed_growing_file,
-                args=(child.stdin, path, total_size),
-                daemon=True,
-            ).start()
-
-        self.send_response(200)
-        self.send_cors_headers()
-        self.send_header("Content-Type", "video/mp2t")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Nuvio-Playback-Mode", active_mode)
-        self.end_headers()
-
         try:
-            while True:
-                chunk = child.stdout.read(1024 * 1024)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        finally:
             try:
-                if child.poll() is None:
-                    child.terminate()
-                    try:
-                        child.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        child.kill()
+                child = subprocess.Popen(
+                    args,
+                    stdin=subprocess.PIPE if pipe_input else subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as error:
+                self.send_json(500, {"error": str(error)})
+                return
+
+            if pipe_input:
+                threading.Thread(
+                    target=feed_growing_file,
+                    args=(child.stdin, path, total_size),
+                    daemon=True,
+                ).start()
+
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header("Content-Type", "video/mp2t")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Nuvio-Playback-Mode", active_mode)
+            self.end_headers()
+
+            try:
+                while True:
+                    chunk = child.stdout.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             finally:
-                if child.stdout:
-                    child.stdout.close()
+                try:
+                    if child.poll() is None:
+                        child.terminate()
+                        try:
+                            child.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            child.kill()
+                finally:
+                    if child.stdout:
+                        child.stdout.close()
+        finally:
+            TRANSCODE_SEMAPHORE.release()
 
     def subtitle_file(self, torrent_hash, index):
         info = torrent_info(torrent_hash)

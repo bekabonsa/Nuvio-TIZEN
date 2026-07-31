@@ -225,16 +225,24 @@ FFPROBE_PATH=ffprobe
 BRIDGE_TRANSCODE_VIDEO_CODEC=libx265
 BRIDGE_TRANSCODE_PRESET=faster
 BRIDGE_TRANSCODE_CRF=18
+BRIDGE_TRANSCODE_AUDIO_CODEC=ac3
+BRIDGE_MAX_TRANSCODES=1
 ```
 
 Remux mode keeps video lossless. Dolby Vision fallback must re-encode video because Samsung AVPlay commonly rejects DV-in-MKV; lower `BRIDGE_TRANSCODE_CRF` values preserve more quality at higher CPU cost.
+For desktop browser audio testing, set `BRIDGE_TRANSCODE_AUDIO_CODEC=aac` and `BRIDGE_TRANSCODE_AUDIO_FORCE=1`; this trades surround/Atmos passthrough for browser-compatible AAC.
 
 Point the TV app at the Oracle bridge in `js/local-config.js` before packaging:
 
 ```js
 var NUVIO_AUTH_BASE_URL = 'https://<your-oracle-domain>';
 var TV_LOGIN_REDIRECT_BASE_URL = NUVIO_AUTH_BASE_URL + '/tv-login';
+var LOCAL_ADDON_URLS = [
+  'https://comet.elfhosted.com/<your-private-comet-config>/manifest.json'
+];
 ```
+
+Stream source buttons are configured by `STREAM_SOURCE_FILTERS` in `js/config-state.js`. Local addon URLs are merged with synced account addons at runtime, so private debrid addon URLs should stay in gitignored `js/local-config.js`.
 
 Use HTTPS for the public Oracle host before entering account passwords from the TV or phone. The bridge stores password hashes with PBKDF2 and stores session tokens hashed in SQLite, but HTTP still exposes credentials in transit.
 

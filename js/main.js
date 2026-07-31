@@ -151,12 +151,19 @@ function bindLibrary() {
 }
 
 function bindStreamFilters() {
-    byId('streamCachedToggle').addEventListener('click', function() {
-        setStreamSourceFilter('cached');
-    });
+    var toggle = byId('streamSourceToggle');
 
-    byId('streamBridgeToggle').addEventListener('click', function() {
-        setStreamSourceFilter('bridge');
+    toggle.addEventListener('click', function(event) {
+        var target = event.target;
+
+        while (target && target !== toggle && !target.getAttribute('data-stream-source-id')) {
+            target = target.parentNode;
+        }
+        if (!target || target === toggle) {
+            return;
+        }
+
+        setStreamSourceFilter(target.getAttribute('data-stream-source-id'));
     });
 }
 
